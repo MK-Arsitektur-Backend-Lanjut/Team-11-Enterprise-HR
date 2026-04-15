@@ -1,4 +1,6 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+<p align="center">
+  <h1 align="center">🏢 Team 11 - Enterprise HR (Approval Module)</h1>
+</p>
 
 <p align="center">
 <a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
@@ -7,52 +9,114 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
-## About Laravel
+## 📖 Tentang Project
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Project ini adalah **Leave Approval Module** (Modul Persetujuan Cuti) yang merupakan bagian dari Sistem HR Enterprise terintegrasi (Team 11). Dibangun menggunakan **Laravel**, modul ini menangani seluruh siklus pengajuan cuti karyawan, mulai dari permohonan awal, proses multi-level approval (HRD, Manajer, dsb), hingga ke pengiriman notifikasi ketika status persetujuan telah diperbarui.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+### ✨ Fitur Utama
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- **Pengajuan Cuti (Leave Request)**: Karyawan dapat membuat dan melacak status permohonan cuti.
+- **Alur Persetujuan (Approval Workflow)**: Mendukung persetujuan bertingkat untuk permohonan cuti yang diatur melalui service independen.
+- **Event-Driven Notifications**: Menggunakan implementasi Event-Listener Laravel untuk proses notifikasi di latar belakang yang lebih efisien.
+- **Repository & Service Pattern**: Kode terstruktur rapi untuk menjaga logika bisnis terpisah dari Controller, sehingga memudahkan _maintenance_ jangka panjang.
 
-## Learning Laravel
+---
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## 🧩 Struktur Modul Approval
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Modul inti sistem terletak pada direktori berikut:
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+- **Models**: `LeaveRequest` (Permohonan cuti) dan `LeaveApproval` (Tabel approval/persetujuan setiap entitas/manager terkait).
+- **Controllers**: Endpoint API & Web yang diekspos melalui `LeaveController` & `ApprovalController`.
+- **Services**: `ApprovalWorkflowService` bertanggungjawab memanajemen workflow persetujuan secara mandiri.
+- **Repositories**: Akses data ke _database_ diabstraksikan melalui `LeaveRequestRepository`.
+- **Events & Listeners**: Event `LeaveRequestStatusUpdated` dipicu ketika ada perubahan, lalu didengarkan oleh listener `SendLeaveNotification` untuk melog status atau mengirim email/WhatsApp (notifikasi asinkron).
 
-## Agentic Development
+---
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## 🚀 Panduan Instalasi (Docker & Laravel Sail)
+
+Project ini siap dijalankan secara seragam _cross-platform_ menggunakan [Laravel Sail](https://laravel.com/docs/sail). Anda tidak perlu repot menginstall PHP, Nginx, MySQL, atau Redis secara manual di komputer Anda, cukup mengandalkan **Docker**!
+
+### Prasyarat
+
+1. **Docker Desktop** terinstall dan berjalan di mesin Anda (disarankan pengaturan [WSL2 backend](https://docs.docker.com/desktop/windows/wsl/) untuk Windows).
+2. Git untuk _version control_.
+
+### Langkah-langkah Instalasi
+
+**1. Clone Repository**  
+Buka terminal dan jalankan:
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+git clone https://github.com/your-username/Team-11-Enterprise-HR.git
+cd Team-11-Enterprise-HR
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+**2. Copy File Environment**  
+Sesuaikan konfigurasi environment aplikasi:
 
-## Contributing
+```bash
+cp .env.example .env
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+_(Catatan: pastikan `.env` Anda menggunakan kredensial default bawaan sail, misalnya DB_HOST=mysql, DB_USERNAME=sail)_
 
-## Code of Conduct
+**3. Install Dependensi (Composer via Sail)**  
+Jika Anda tidak memiliki Composer/PHP di mesin lokal, jalankan perintah instalasi via _small docker container_ berikut:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+docker run --rm \
+    -u "$(id -u):$(id -g)" \
+    -v "$(pwd):/var/www/html" \
+    -w /var/www/html \
+    laravelsail/php83-composer:latest \
+    composer install --ignore-platform-reqs
+```
 
-## Security Vulnerabilities
+> Atau, jika Anda **sudah** memiliki composer di lokal, cukup jalankan: `composer install`.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+**4. Jalankan Laravel Sail (Container)**  
+Aplikasi dan database akan segera dibangun dan dijalankan di latar belakang:
 
-## License
+```bash
+./vendor/bin/sail up -d
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+_(Disarankan untuk membuat alias: `alias sail='sh $([ -f sail ] && echo sail || echo vendor/bin/sail)'` pada bashrc/zshrc Anda untuk menyingkat perintah menjadi `sail` saja)._
+
+**5. Generate App Key & Database Migrations**  
+Setelah semua service docker berlabel _started/running_, generate App key dan migrasi skema tabelnya (termasuk dummy data):
+
+```bash
+./vendor/bin/sail artisan key:generate
+./vendor/bin/sail artisan migrate --seed
+```
+
+🎉 **Selesai!** Aplikasi kini dapat diakses secara lokal di browser Anda pada **[http://localhost](http://localhost)**.
+
+---
+
+## 🛑 Perintah Berguna Lainnya via Sail
+
+Gunakan baris perintah `./vendor/bin/sail` (atau `sail` jika sudah dialias) sebagai pengingat Anda berinteraksi dengan Laravel dalam Docker.
+
+- **Tinker (Console Aplikasi)**:
+    ```bash
+    ./vendor/bin/sail tinker
+    ```
+- **Melihat Log Aplikasi**:
+    ```bash
+    ./vendor/bin/sail logs -f
+    ```
+- **Mematikan Service / Container**:
+    ```bash
+    ./vendor/bin/sail down
+    ```
+    *(Tambahkan `-v` jika Anda ingin mereset *volume* database).*
+
+---
+
+<p align="center">
+<i>Dibangun oleh Team 11 Enterprise HR Developers</i>
+</p>
