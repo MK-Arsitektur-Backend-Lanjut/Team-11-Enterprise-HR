@@ -18,11 +18,12 @@ class ApprovalController extends Controller
     }
 
     /**
-     * GET /api/v1/approvals/pending/{approver_id}
+     * GET /api/v1/approvals/pending
      * Get pending approvals for the current approver/manager.
      */
-    public function pending($approverId)
+    public function pending(Request $request)
     {
+        $approverId = $request->attributes->get('employee_id');
         $pendingApprovals = $this->repository->getPendingApprovalsFor($approverId);
 
         return response()->json([
@@ -32,20 +33,22 @@ class ApprovalController extends Controller
     }
 
     /**
-     * POST /api/v1/approvals/level-1/{leave_request_id}/{approver_id}
+     * POST /api/v1/approvals/level-1/{leave_request_id}
      * Approve or reject a leave request with notes.
      */
-    public function approveLevel1(Request $request, $leaveRequestId, $approverId)
+    public function approveLevel1(Request $request, $leaveRequestId)
     {
+        $approverId = $request->attributes->get('employee_id');
         return $this->handleApproval($request, $leaveRequestId, $approverId, 1);
     }
 
     /**
-     * POST /api/v1/approvals/level-2/{leave_request_id}/{approver_id}
+     * POST /api/v1/approvals/level-2/{leave_request_id}
      * Approve or reject a leave request with notes at Manager level 2.
      */
-    public function approveLevel2(Request $request, $leaveRequestId, $approverId)
+    public function approveLevel2(Request $request, $leaveRequestId)
     {
+        $approverId = $request->attributes->get('employee_id');
         return $this->handleApproval($request, $leaveRequestId, $approverId, 2);
     }
 

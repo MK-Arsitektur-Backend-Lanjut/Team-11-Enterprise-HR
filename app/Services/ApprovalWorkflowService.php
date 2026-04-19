@@ -15,14 +15,14 @@ class ApprovalWorkflowService
     public function __construct(LeaveRequestRepository $repository)
     {
         $this->repository = $repository;
-        // In a real scenario, this would be fetched from config/services.php or .env
-        $this->attendanceApiUrl = env('ATTENDANCE_SERVICE_URL', 'http://localhost:8000/api/v1');
+        // Fetch API URL from config/services.php
+        $this->attendanceApiUrl = rtrim(config('services.attendance.url'), '/');
     }
 
     /**
      * Submit a new leave request and initiate the workflow
      */
-    public function submitLeaveRequest($employeeId, $data)
+    public function submitLeaveRequest($employeeId, $data, $token = null)
     {
         // 1. Create the base Leave Request
         $leaveRequest = $this->repository->createRequest([
@@ -35,11 +35,11 @@ class ApprovalWorkflowService
         ]);
 
         // 2. Fetch the hierarchy to find the employee's manager
-        $hierarchy = $this->fetchEmployeeHierarchy($employeeId);
+        $hierarchy = $this->fetchEmployeeHierarchy($employeeId, $token);
 
         if (empty($hierarchy)) {
-             $this->finalizeApproval($leaveRequest->id);
-             return clone $this->repository->getRequestById($leaveRequest->id);
+            // Do NOT auto-approve if hierarchy fetch fails. It means API connection failed or data is missing.
+            throw new \Exception("Gagal mengambil data hierarki karyawan. Permintaan cuti dibatalkan.");
         }
 
         $employeeData = $hierarchy['employee'];
@@ -173,16 +173,23 @@ class ApprovalWorkflowService
     /**
      * Fetch hierarchy from the Modul Attendance service
      */
-    private function fetchEmployeeHierarchy($employeeId)
+    private function fetchEmployeeHierarchy($employeeId, $token = null)
     {
         try {
-            $response = Http::get("{$this->attendanceApiUrl}/employees/{$employeeId}/hierarchy");
+            $request = Http::acceptJson();
+            if ($token) {
+                $request->withToken($token);
+            }
+
+            $response = $request->get("{$this->attendanceApiUrl}/employees/{$employeeId}/hierarchy");
 
             if ($response->successful()) {
                 return $response->json('data');
+            } else {
+                Log::error("Failed fetching hierarchy from Attendance Module: " . $response->body());
             }
         } catch (\Exception $e) {
-            Log::error("Failed fetching hierarchy from Attendance Module: " . $e->getMessage());
+            Log::error("Failed fetching hierarchy from Attendance Module exception: " . $e->getMessage());
         }
 
         return null;

@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    // Microservices API Base URLs
+    'attendance' => [
+        'url' => env('ATTENDANCE_SERVICE_URL', 'http://127.0.0.1:8001/api/v1'),
+    ],
+
+    'employee' => [
+        'url' => env('EMPLOYEE_SERVICE_URL', 'http://127.0.0.1:8002/api/v1'),
+    ],
+
 ];

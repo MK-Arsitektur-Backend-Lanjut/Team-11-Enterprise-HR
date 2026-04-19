@@ -18,11 +18,13 @@ class LeaveController extends Controller
     }
 
     /**
-     * POST /api/v1/leaves/{employee_id}
+     * POST /api/v1/leaves
      * Submit a leave request.
      */
-    public function store(Request $request, $employeeId)
+    public function store(Request $request)
     {
+        $employeeId = $request->attributes->get('employee_id');
+
         $request->validate([
             'start_date' => 'required|date',
             'end_date'   => 'required|date|after_or_equal:start_date',
@@ -31,7 +33,8 @@ class LeaveController extends Controller
         ]);
 
         try {
-            $leaveRequest = $this->workflowService->submitLeaveRequest($employeeId, $request->all());
+            $token = $request->bearerToken();
+            $leaveRequest = $this->workflowService->submitLeaveRequest($employeeId, $request->all(), $token);
 
             return response()->json([
                 'success' => true,
@@ -48,11 +51,12 @@ class LeaveController extends Controller
     }
 
     /**
-     * GET /api/v1/leaves/my-requests/{employee_id}
-     * View leave history and status by employee ID.
+     * GET /api/v1/leaves/my-requests
+     * View leave history and status by authenticated employee ID.
      */
-    public function myRequests($employeeId)
+    public function myRequests(Request $request)
     {
+        $employeeId = $request->attributes->get('employee_id');
         $requests = $this->repository->getRequestsByEmployee($employeeId);
 
         return response()->json([
