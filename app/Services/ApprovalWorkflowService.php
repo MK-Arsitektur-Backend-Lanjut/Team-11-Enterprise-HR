@@ -11,12 +11,31 @@ class ApprovalWorkflowService
 {
     private $repository;
     private $attendanceApiUrl;
+    private $employeeApiUrl;
 
     public function __construct(LeaveRequestRepository $repository)
     {
         $this->repository = $repository;
         // Fetch API URL from config/services.php
         $this->attendanceApiUrl = rtrim(config('services.attendance.url'), '/');
+        $this->employeeApiUrl = rtrim(config('services.employee.url'), '/');
+    }
+
+    /**
+     * Fetch leave balance from Employee Module
+     */
+    public function getEmployeeLeaveBalance($employeeId, $token = null)
+    {
+        try {
+            $empResp = Http::withToken($token)->get("{$this->employeeApiUrl}/employees/{$employeeId}/hierarchy");
+            if ($empResp->successful()) {
+                return $empResp->json('data.employee.leave_balance') ?? 0;
+            }
+        } catch (\Exception $e) {
+            Log::error("Failed fetching employee balance: " . $e->getMessage());
+        }
+
+        return 0;
     }
 
     /**
@@ -24,6 +43,34 @@ class ApprovalWorkflowService
      */
     public function submitLeaveRequest($employeeId, $data, $token = null)
     {
+        // 0. Cek Saldo Cuti di Modul Employee
+        $leaveBalances = $this->getEmployeeLeaveBalance($employeeId, $token);
+
+        // Cek apakah karyawan masih memiliki pengajuan cuti yang statusnya pending
+        $hasPending = \App\Models\LeaveRequest::where('employee_id', $employeeId)
+                        ->where('status', 'pending')
+                        ->exists();
+
+        if ($hasPending) {
+            return [
+                'status' => 'rejected',
+                'leaves_balances' => $leaveBalances,
+                'message' => "Pengajuan cuti ditolak. Anda masih memiliki pengajuan cuti yang berstatus pending."
+            ];
+        }
+
+        $start = new \DateTime($data['start_date']);
+        $end = new \DateTime($data['end_date']);
+        $daysRequested = $start->diff($end)->days + 1;
+
+        if ($leaveBalances < $daysRequested) {
+            return [
+                'status' => 'rejected',
+                'leaves_balances' => $leaveBalances,
+                'message' => "Pengajuan cuti ditolak. Saldo cuti ({$leaveBalances}) tidak mencukupi untuk {$daysRequested} hari."
+            ];
+        }
+
         // 1. Create the base Leave Request
         $leaveRequest = $this->repository->createRequest([
             'employee_id' => $employeeId,
@@ -84,6 +131,7 @@ class ApprovalWorkflowService
         }
 
         $result = clone $this->repository->getRequestById($leaveRequest->id);
+        $result->setAttribute('employee_name', $employeeData['name'] ?? 'Unknown');
 
         if (!empty($hierarchy['manager'])) {
             foreach ($result->approvals as $approval) {
@@ -95,6 +143,7 @@ class ApprovalWorkflowService
             }
         }
 
+        $result->setAttribute('leaves_balances', $leaveBalances);
         return $result;
     }
 
@@ -169,15 +218,34 @@ class ApprovalWorkflowService
         // Finalisasi jika bukan manager (berarti Staff/Director) atau ini persetujuan di Level 2
         $updatedRequest = $this->finalizeApproval($leaveRequest->id);
 
-        // Simulating the update across the microservice barrier
+        // Memanggil API Modul Employee untuk memotong saldo cuti (leave_balance)
+        $start = new \DateTime($leaveRequest->start_date);
+        $end = new \DateTime($leaveRequest->end_date);
+        $daysRequested = $start->diff($end)->days + 1;
+
         try {
-            // Here we assume we call it and let Attendance know it was taken,
-            // the logic in Attendance API was previously configured to take a hardcoded leaf balance,
-            // so we would just log standard flow.
-            Log::info("Calling Attendance Module to deduct balance for Employee: " . $leaveRequest->employee_id);
-            // Http::put("{$this->attendanceApiUrl}/employees/{$leaveRequest->employee_id}/leave-balance", ['leave_balance' => ...]);
+            $token = request()->bearerToken(); // atau oper token dari argumen
+
+            // Ambil balance saat ini dulu dari Modul Employee
+            $empResp = Http::withToken($token)->get("{$this->employeeApiUrl}/employees/{$leaveRequest->employee_id}/hierarchy");
+            $currentBalance = 0;
+            if ($empResp->successful()) {
+                $currentBalance = $empResp->json('data.employee.leave_balance') ?? 0;
+            }
+
+            $newBalance = max(0, $currentBalance - $daysRequested);
+
+            Log::info("Calling Employee Module to deduct balance for Employee: {$leaveRequest->employee_id}. Old: {$currentBalance}, New: {$newBalance}");
+
+            $updateResp = Http::withToken($token)->put("{$this->employeeApiUrl}/employees/{$leaveRequest->employee_id}/leave-balance", [
+                'leave_balance' => $newBalance
+            ]);
+
+            if (!$updateResp->successful()) {
+                Log::error("Failed to update Employee Leave Balance: " . $updateResp->body());
+            }
         } catch (\Exception $e) {
-            Log::error("Failed to update Attendance Leave Balance: " . $e->getMessage());
+            Log::error("Failed to update Employee Leave Balance Exception: " . $e->getMessage());
         }
 
         return $updatedRequest;
@@ -191,6 +259,58 @@ class ApprovalWorkflowService
         $updatedRequest = $this->repository->updateStatus($leaveRequestId, 'approved');
         event(new LeaveRequestStatusUpdated($updatedRequest));
         return $updatedRequest;
+    }
+
+    /**
+     * Enrich a collection of LeaveRequests with Employee & Approver names
+     */
+    public function enrichLeaveRequests($requests, $token)
+    {
+        $empCache = [];
+        foreach ($requests as $req) {
+            $empId = $req->employee_id;
+            if (!array_key_exists($empId, $empCache)) {
+                $data = $this->fetchEmployeeHierarchy($empId, $token);
+                $empCache[$empId] = $data ? ($data['employee']['name'] ?? 'Unknown') : 'Unknown';
+            }
+            $req->setAttribute('employee_name', $empCache[$empId]);
+
+            foreach ($req->approvals as $app) {
+                $appId = $app->approver_id;
+                if (!array_key_exists($appId, $empCache)) {
+                    $data = $this->fetchEmployeeHierarchy($appId, $token);
+                    $empCache[$appId] = $data ? ($data['employee']['name'] ?? 'Unknown') : 'Unknown';
+                }
+                $app->setAttribute('approver_name', $empCache[$appId]);
+            }
+        }
+        return $requests;
+    }
+
+    /**
+     * Enrich a collection of LeaveApprovals with Employee & Approver names
+     */
+    public function enrichApprovals($approvals, $token)
+    {
+        $empCache = [];
+        foreach ($approvals as $app) {
+            $appId = $app->approver_id;
+            if (!array_key_exists($appId, $empCache)) {
+                $data = $this->fetchEmployeeHierarchy($appId, $token);
+                $empCache[$appId] = $data ? ($data['employee']['name'] ?? 'Unknown') : 'Unknown';
+            }
+            $app->setAttribute('approver_name', $empCache[$appId]);
+
+            if ($app->leaveRequest) {
+                $empId = $app->leaveRequest->employee_id;
+                if (!array_key_exists($empId, $empCache)) {
+                    $data = $this->fetchEmployeeHierarchy($empId, $token);
+                    $empCache[$empId] = $data ? ($data['employee']['name'] ?? 'Unknown') : 'Unknown';
+                }
+                $app->leaveRequest->setAttribute('employee_name', $empCache[$empId]);
+            }
+        }
+        return $approvals;
     }
 
     /**

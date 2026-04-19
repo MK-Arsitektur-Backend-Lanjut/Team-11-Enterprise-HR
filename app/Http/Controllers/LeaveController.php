@@ -36,6 +36,14 @@ class LeaveController extends Controller
             $token = $request->bearerToken();
             $leaveRequest = $this->workflowService->submitLeaveRequest($employeeId, $request->all(), $token);
 
+            if (is_array($leaveRequest) && isset($leaveRequest['status']) && $leaveRequest['status'] === 'rejected') {
+                return response()->json([
+                    'success' => false,
+                    'message' => $leaveRequest['message'],
+                    'leaves_balances' => $leaveRequest['leaves_balances']
+                ], 400);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Leave request submitted successfully.',
@@ -58,10 +66,14 @@ class LeaveController extends Controller
     {
         $employeeId = $request->attributes->get('employee_id');
         $requests = $this->repository->getRequestsByEmployee($employeeId);
+        $enrichedRequests = $this->workflowService->enrichLeaveRequests($requests, $request->bearerToken());
+
+        $leavesBalances = $this->workflowService->getEmployeeLeaveBalance($employeeId, $request->bearerToken());
 
         return response()->json([
-            'success' => true,
-            'data'    => $requests
+            'success'         => true,
+            'leaves_balances' => $leavesBalances,
+            'data'            => $enrichedRequests
         ], 200);
     }
 
@@ -69,13 +81,14 @@ class LeaveController extends Controller
      * GET /api/v1/leaves/all
      * View all leaves across the company.
      */
-    public function allRequests()
+    public function allRequests(Request $request)
     {
         $requests = $this->repository->getAllRequests();
+        $enrichedRequests = $this->workflowService->enrichLeaveRequests($requests, $request->bearerToken());
 
         return response()->json([
             'success' => true,
-            'data'    => $requests
+            'data'    => $enrichedRequests
         ], 200);
     }
 }

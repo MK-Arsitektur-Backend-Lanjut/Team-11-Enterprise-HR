@@ -25,10 +25,11 @@ class ApprovalController extends Controller
     {
         $approverId = $request->attributes->get('employee_id');
         $pendingApprovals = $this->repository->getPendingApprovalsFor($approverId);
+        $enrichedApprovals = $this->workflowService->enrichApprovals($pendingApprovals, $request->bearerToken());
 
         return response()->json([
             'success' => true,
-            'data'    => $pendingApprovals
+            'data'    => $enrichedApprovals
         ], 200);
     }
 
