@@ -79,12 +79,15 @@ class LeaveController extends Controller
 
     /**
      * GET /api/v1/leaves/all
-     * View all leaves across the company.
+     * View all leaves from subordinates only.
      */
     public function allRequests(Request $request)
     {
-        $requests = $this->repository->getAllRequests();
-        $enrichedRequests = $this->workflowService->enrichLeaveRequests($requests, $request->bearerToken());
+        $employeeId = $request->attributes->get('employee_id');
+        $token = $request->bearerToken();
+
+        $requests = $this->workflowService->getSubordinateRequests($employeeId, $token);
+        $enrichedRequests = $this->workflowService->enrichLeaveRequests($requests, $token);
 
         return response()->json([
             'success' => true,

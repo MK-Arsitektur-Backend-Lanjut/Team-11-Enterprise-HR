@@ -314,7 +314,29 @@ class ApprovalWorkflowService
     }
 
     /**
-     * Fetch hierarchy from the Modul Attendance service
+     * Get Leave Requests from Subordinates
+     */
+    public function getSubordinateRequests($employeeId, $token = null)
+    {
+        $hierarchy = $this->fetchEmployeeHierarchy($employeeId, $token);
+
+        $subordinateIds = [];
+        if (!empty($hierarchy) && !empty($hierarchy['subordinates'])) {
+            foreach ($hierarchy['subordinates'] as $sub) {
+                $subordinateIds[] = $sub['id'];
+            }
+        }
+
+        // If no subordinates, return empty collection
+        if (empty($subordinateIds)) {
+            return collect([]);
+        }
+
+        return $this->repository->getRequestsByEmployeeIds($subordinateIds);
+    }
+
+    /**
+     * Fetch hierarchy from the Modul Employee service
      */
     private function fetchEmployeeHierarchy($employeeId, $token = null)
     {
@@ -324,15 +346,15 @@ class ApprovalWorkflowService
                 $request->withToken($token);
             }
 
-            $response = $request->get("{$this->attendanceApiUrl}/employees/{$employeeId}/hierarchy");
+            $response = $request->get("{$this->employeeApiUrl}/employees/{$employeeId}/hierarchy");
 
             if ($response->successful()) {
                 return $response->json('data');
             } else {
-                Log::error("Failed fetching hierarchy from Attendance Module: " . $response->body());
+                Log::error("Failed fetching hierarchy from Employee Module: " . $response->body());
             }
         } catch (\Exception $e) {
-            Log::error("Failed fetching hierarchy from Attendance Module exception: " . $e->getMessage());
+            Log::error("Failed fetching hierarchy from Employee Module exception: " . $e->getMessage());
         }
 
         return null;

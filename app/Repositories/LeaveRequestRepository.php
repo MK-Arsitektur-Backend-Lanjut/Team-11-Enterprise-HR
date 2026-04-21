@@ -17,6 +17,11 @@ class LeaveRequestRepository
         return LeaveRequest::where('employee_id', $employeeId)->with('approvals')->orderByDesc('created_at')->get();
     }
 
+    public function getRequestsByEmployeeIds(array $employeeIds)
+    {
+        return LeaveRequest::whereIn('employee_id', $employeeIds)->with('approvals')->orderByDesc('created_at')->get();
+    }
+
     public function getAllRequests()
     {
         return LeaveRequest::with('approvals')->orderByDesc('created_at')->get();

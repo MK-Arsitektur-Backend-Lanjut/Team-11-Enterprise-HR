@@ -13,7 +13,7 @@ Route::middleware([\App\Http\Middleware\VerifyMicroserviceToken::class])->group(
     Route::prefix('v1/leaves')->group(function () {
         Route::post('/', [LeaveController::class, 'store']);
         Route::get('my-requests', [LeaveController::class, 'myRequests']);
-        Route::get('all', [LeaveController::class, 'allRequests']);
+        // Route::get('all', [LeaveController::class, 'allRequests']);
     });
 
     Route::prefix('v1/approvals')->group(function () {
