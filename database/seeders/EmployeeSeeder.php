@@ -30,14 +30,14 @@ class EmployeeSeeder extends Seeder
         // =========================================================
         $adminUser = User::create([
             'name'     => 'Admin System',
-            'email'    => 'admin@attendance.test',
+            'email'    => 'admin1@attendance.test',
             'password' => $password,
         ]);
 
         $adminEmployee = Employee::factory()->create([
             'user_id'    => $adminUser->id,
             'name'       => 'Admin System',
-            'email'      => 'admin@attendance.test',
+            'email'      => 'admin1@attendance.test',
             'position'   => 'System Administrator',
             'department' => 'IT',
             'manager_id' => null,
@@ -49,19 +49,21 @@ class EmployeeSeeder extends Seeder
         // =========================================================
         $ceoUser = User::create([
             'name'     => 'CEO Company',
-            'email'    => 'ceo@attendance.test',
+            'email'    => 'ceo2@attendance.test',
             'password' => $password,
         ]);
 
         $ceo = Employee::factory()->create([
             'user_id'    => $ceoUser->id,
             'name'       => 'CEO Company',
-            'email'      => 'ceo@attendance.test',
+            'email'      => 'ceo2@attendance.test',
             'position'   => 'CEO',
             'department' => 'Executive',
             'manager_id' => null,
             'leave_balance' => 20,
         ]);
+
+        $currentId = 3;
 
         // =========================================================
         // 3. DIRECTORS (10)
@@ -69,7 +71,7 @@ class EmployeeSeeder extends Seeder
         $directors = collect();
         for ($i = 1; $i <= 10; $i++) {
             $name = fake()->name();
-            $email = "director{$i}@attendance.test";
+            $email = "director{$currentId}@attendance.test";
 
             $dirUser = User::create([
                 'name'     => $name,
@@ -88,6 +90,7 @@ class EmployeeSeeder extends Seeder
             ]);
 
             $directors->push($director);
+            $currentId++;
         }
 
         // =========================================================
@@ -98,7 +101,7 @@ class EmployeeSeeder extends Seeder
 
         for ($i = 1; $i <= 50; $i++) {
             $name = fake()->name();
-            $email = "manager{$i}@attendance.test";
+            $email = "manager{$currentId}@attendance.test";
             $dept = $departments[array_rand($departments)];
 
             $mgrUser = User::create([
@@ -118,6 +121,7 @@ class EmployeeSeeder extends Seeder
             ]);
 
             $managers->push($manager);
+            $currentId++;
         }
 
         // =========================================================
@@ -131,7 +135,7 @@ class EmployeeSeeder extends Seeder
         $usersData = [];
         $staffEmails = [];
         for ($i = 0; $i < $staffCount; $i++) {
-            $email = "staff{$i}@attendance.test";
+            $email = "staff{$currentId}@attendance.test";
             $staffEmails[] = $email;
             $usersData[] = [
                 'name'       => fake()->name(),
@@ -140,6 +144,7 @@ class EmployeeSeeder extends Seeder
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
+            $currentId++;
         }
 
         // Insert users in chunks of 500
@@ -154,12 +159,12 @@ class EmployeeSeeder extends Seeder
 
         // Create employees linked to users
         $employeesData = [];
-        for ($i = 0; $i < $staffCount; $i++) {
-            $email = "staff{$i}@attendance.test";
+        foreach ($usersData as $user) {
+            $email = $user['email'];
             $managerId = $managerIds[array_rand($managerIds)];
             $employeesData[] = [
                 'user_id'       => $staffUsers[$email],
-                'name'          => $usersData[$i]['name'],
+                'name'          => $user['name'],
                 'email'         => $email,
                 'position'      => 'Staff',
                 'department'    => $managerDepartments[$managerId],
@@ -281,10 +286,10 @@ class EmployeeSeeder extends Seeder
         $this->command->info('✅ ' . count($leaveData) . ' leave records created');
         $this->command->info('');
         $this->command->info('🔐 Login credentials:');
-        $this->command->info('   Admin:    admin@attendance.test / 1234');
-        $this->command->info('   CEO:      ceo@attendance.test / 1234');
-        $this->command->info('   Director: director1@attendance.test / 1234');
-        $this->command->info('   Manager:  manager1@attendance.test / 1234');
-        $this->command->info('   Staff:    staff0@attendance.test / 1234');
+        $this->command->info('   Admin:    admin1@attendance.test / 1234');
+        $this->command->info('   CEO:      ceo2@attendance.test / 1234');
+        $this->command->info('   Director: director3@attendance.test / 1234 (hingga director12)');
+        $this->command->info('   Manager:  manager13@attendance.test / 1234 (hingga manager62)');
+        $this->command->info('   Staff:    staff63@attendance.test / 1234 (dan seterusnya)');
     }
 }
