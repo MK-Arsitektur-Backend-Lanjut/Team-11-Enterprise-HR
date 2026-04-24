@@ -35,4 +35,23 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Microservice Endpoints
+    |--------------------------------------------------------------------------
+    |
+    | URL endpoint untuk berkomunikasi dengan microservice lain.
+    | Employee Module: Profil karyawan, hierarki, leave balance.
+    | Approval Module: Data pengajuan cuti yang sudah approved.
+    |
+    */
+
+    'employee' => [
+        'url' => env('EMPLOYEE_SERVICE_URL', 'http://127.0.0.1:8002/api/v1'),
+    ],
+
+    'approval' => [
+        'url' => env('APPROVAL_SERVICE_URL', 'http://127.0.0.1:8003/api/v1'),
+    ],
+
 ];
