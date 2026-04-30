@@ -9,8 +9,7 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 Route::prefix('v1/employees')->group(function () {
-    Route::get('profile', [EmployeeController::class, 'profile']);
+    Route::get('profile/{id}', [EmployeeController::class, 'profile']);
     Route::get('{id}/hierarchy', [EmployeeController::class, 'hierarchy']);
-    // This route should ideally be protected so only authorized services can update it
     Route::put('{id}/leave-balance', [EmployeeController::class, 'updateLeaveBalance']);
 });

@@ -13,12 +13,9 @@ class EmployeeController extends Controller
         $this->employeeRepository = $employeeRepository;
     }
 
-    public function profile(Request $request)
+    public function profile(Request $request, $id)
     {
-        // For demonstration, simulating a logged in employee by picking ID 1.
-        // In a real application, you would use auth()->id() instead.
-        $employeeId = 1;
-        $profile = $this->employeeRepository->getEmployeeProfile($employeeId);
+        $profile = $this->employeeRepository->getEmployeeProfile($id);
 
         return response()->json([
             'success' => true,
