@@ -74,28 +74,5 @@ class AttendanceController extends Controller
         ]);
     }
 
-    /**
-     * GET /api/v1/attendance/department-stats
-     * Statistik kehadiran department tertentu pada tanggal tertentu.
-     * Data employee diambil dari Modul Employee via API.
-     */
-    public function departmentStats(Request $request)
-    {
-        $request->validate([
-            'department' => 'required|string',
-            'date'       => 'nullable|date',
-        ]);
 
-        $date = $request->date ?? now()->toDateString();
-        $token = $request->bearerToken();
-
-        $result = $this->service->getDepartmentStatistics(
-            $request->department,
-            $date,
-            $token
-        );
-
-        $statusCode = $result['success'] ? 200 : 500;
-        return response()->json($result, $statusCode);
-    }
 }

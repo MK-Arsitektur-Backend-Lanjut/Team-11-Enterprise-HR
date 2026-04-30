@@ -38,12 +38,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
     });
 
-    // Attendance: Check-in, Check-out, History, Statistik Department
+    // Attendance: Check-in, Check-out, History
     Route::prefix('v1/attendance')->group(function () {
         Route::post('check-in', [AttendanceController::class, 'checkIn']);
         Route::post('check-out', [AttendanceController::class, 'checkOut']);
         Route::get('history', [AttendanceController::class, 'history']);
-        Route::get('department-stats', [AttendanceController::class, 'departmentStats']);
     });
 
     // Payroll Export: JSON & CSV

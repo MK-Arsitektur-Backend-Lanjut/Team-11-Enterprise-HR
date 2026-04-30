@@ -54,36 +54,7 @@ class AttendanceRepository
         return $query->paginate($perPage);
     }
 
-    /**
-     * Ambil statistik kehadiran per department.
-     * Menggunakan join ke users untuk filter.
-     */
-    public function getDepartmentStats(string $date, array $userIds): array
-    {
-        if (empty($userIds)) {
-            return [
-                'total_employees' => 0,
-                'hadir'           => 0,
-                'terlambat'       => 0,
-                'alpha'           => 0,
-                'izin'            => 0,
-                'cuti'            => 0,
-            ];
-        }
 
-        $attendances = Attendance::whereIn('user_id', $userIds)
-            ->where('date', $date)
-            ->get();
-
-        return [
-            'total_employees' => count($userIds),
-            'hadir'           => $attendances->where('status', 'hadir')->count(),
-            'terlambat'       => $attendances->where('status', 'terlambat')->count(),
-            'alpha'           => count($userIds) - $attendances->count(),
-            'izin'            => $attendances->where('status', 'izin')->count(),
-            'cuti'            => $attendances->where('status', 'cuti')->count(),
-        ];
-    }
 
     /**
      * Ambil semua attendance dalam rentang tanggal untuk batch user.

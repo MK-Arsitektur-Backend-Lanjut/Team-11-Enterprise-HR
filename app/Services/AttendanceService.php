@@ -109,52 +109,7 @@ class AttendanceService
         return $this->repository->getHistoryByUser($userId, $startDate, $endDate, $perPage);
     }
 
-    /**
-     * Ambil statistik kehadiran per department dari Modul Employee.
-     * Langkah:
-     * 1. Panggil API Employee untuk dapatkan semua employee di department tertentu.
-     * 2. Cocokkan employee_id dengan user_id lokal.
-     * 3. Hitung statistik attendance.
-     */
-    public function getDepartmentStatistics(string $department, string $date, string $token): array
-    {
-        try {
-            $response = Http::withToken($token)
-                ->get("{$this->employeeApiUrl}/employees", [
-                    'department' => $department,
-                ]);
 
-            if (!$response->successful()) {
-                Log::error("Failed fetching employees by department: " . $response->body());
-                return [
-                    'success' => false,
-                    'message' => 'Gagal mengambil data karyawan dari Modul Employee.',
-                ];
-            }
-
-            $employees = $response->json('data') ?? [];
-
-            // Cari user lokal berdasarkan employee_id dari Modul Employee
-            $employeeIds = collect($employees)->pluck('id')->toArray();
-            $users = \App\Models\User::whereIn('employee_id', $employeeIds)->get();
-            $userIds = $users->pluck('id')->toArray();
-
-            $stats = $this->repository->getDepartmentStats($date, $userIds);
-            $stats['department'] = $department;
-            $stats['date'] = $date;
-
-            return [
-                'success' => true,
-                'data'    => $stats,
-            ];
-        } catch (\Exception $e) {
-            Log::error("Department stats error: " . $e->getMessage());
-            return [
-                'success' => false,
-                'message' => 'Terjadi kesalahan saat mengambil statistik department.',
-            ];
-        }
-    }
 
     /**
      * Ekspor data kehadiran dan cuti untuk keperluan penggajian (payroll).
