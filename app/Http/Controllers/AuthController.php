@@ -33,7 +33,6 @@ class AuthController extends Controller
             'password' => 'required|string|min:6|confirmed',
             'position' => 'required|string|max:255',
             'department' => 'required|string|max:255',
-            'leave_balance' => 'integer|min:0',
             'manager_id' => 'nullable|exists:employees,id',
         ]);
 

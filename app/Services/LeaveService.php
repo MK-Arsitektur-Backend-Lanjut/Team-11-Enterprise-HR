@@ -185,6 +185,24 @@ class LeaveService
     }
 
     /**
+     * Update an employee's leave balance.
+     *
+     * @param int $employeeId
+     * @param int $newBalance
+     * @return \App\Models\Employee|null
+     */
+    public function updateEmployeeLeaveBalance(int $employeeId, int $newBalance)
+    {
+        $employee = \App\Models\Employee::find($employeeId);
+        if ($employee) {
+            $employee->leave_balance = $newBalance;
+            $employee->save();
+            return $employee;
+        }
+        return null;
+    }
+
+    /**
      * Calculate total days between two dates.
      *
      * @param string $startDate

@@ -165,4 +165,59 @@ class LeaveController extends Controller
 
         return $this->exportService->exportLeavePayrollToCSV($payrollData, $filename);
     }
+
+    /**
+     * Update an employee's leave balance.
+     * Only accessible by HR.
+     *
+     * PUT /api/v1/leaves/employee/{id}/balance
+     *
+     * @param \Illuminate\Http\Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updateLeaveBalance(Request $request, int $id)
+    {
+        $currentEmployee = auth('api')->user();
+        $isHR = strtolower($currentEmployee->department) === 'hr'
+            || strtolower($currentEmployee->position) === 'hr';
+
+        if (!$isHR) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hanya HR yang dapat mengubah jatah cuti karyawan.',
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'leave_balance' => 'required|integer|min:0',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 400);
+        }
+
+        $employee = $this->leaveService->updateEmployeeLeaveBalance($id, $request->leave_balance);
+
+        if (!$employee) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Karyawan tidak ditemukan.',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Jatah cuti karyawan berhasil diperbarui.',
+            'data' => [
+                'employee_id' => $employee->id,
+                'name' => $employee->name,
+                'email' => $employee->email,
+                'leave_balance' => $employee->leave_balance,
+            ]
+        ]);
+    }
 }
