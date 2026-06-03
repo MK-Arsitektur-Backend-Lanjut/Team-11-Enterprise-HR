@@ -25,7 +25,7 @@ class AuthService
                 'password' => Hash::make($data['password']),
                 'position' => $data['position'],
                 'department' => $data['department'],
-                'leave_balance' => 12,
+                'leave_balance' => $data['leave_balance'] ?? 0,
                 'manager_id' => $data['manager_id'] ?? null,
             ]);
 

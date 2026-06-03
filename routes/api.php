@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\LeaveController;
+use App\Http\Controllers\ApprovalController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\EmployeeController;
 
@@ -62,6 +63,5 @@ Route::prefix('v1')->middleware('auth:api')->group(function () {
     Route::post('/leaves/sync', [LeaveController::class, 'syncFromApproval']);
     Route::get('/leaves', [LeaveController::class, 'index']);
     Route::get('/leaves/{id}', [LeaveController::class, 'show']);
-    Route::put('/leaves/employee/{id}/balance', [LeaveController::class, 'updateLeaveBalance']);
 });
 
