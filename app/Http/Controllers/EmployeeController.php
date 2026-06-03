@@ -2,44 +2,29 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Employee;
+use App\Services\EmployeeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 
 class EmployeeController extends Controller
 {
+    private $service;
+
+    public function __construct(EmployeeService $service)
+    {
+        $this->service = $service;
+    }
+
     /**
      * Get all employees with pagination
      */
     public function index(Request $request)
     {
         $perPage = $request->input('per_page', 15);
-        $department = $request->input('department');
-        $position = $request->input('position');
-        $search = $request->input('search');
-
-        $query = Employee::query()->with('manager:id,name,position');
-
-        // Filter by department
-        if ($department) {
-            $query->where('department', $department);
-        }
-
-        // Filter by position
-        if ($position) {
-            $query->where('position', $position);
-        }
-
-        // Search by name or email
-        if ($search) {
-            $query->where(function($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
-            });
-        }
-
-        $employees = $query->latest()->paginate($perPage);
+        $filters = $request->only(['department', 'position', 'search']);
+        
+        $employees = $this->service->getPaginatedEmployees($perPage, $filters);
 
         return response()->json($employees);
     }
@@ -49,8 +34,7 @@ class EmployeeController extends Controller
      */
     public function show($id)
     {
-        $employee = Employee::with(['manager:id,name,position,department', 'subordinates:id,name,position,department'])
-            ->find($id);
+        $employee = $this->service->getEmployeeById($id);
 
         if (!$employee) {
             return response()->json([
@@ -83,15 +67,11 @@ class EmployeeController extends Controller
             ], 422);
         }
 
-        $employee = Employee::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'position' => $request->position,
-            'department' => $request->department,
-            'leave_balance' => $request->leave_balance ?? 15,
-            'manager_id' => $request->manager_id,
-        ]);
+        $data = $request->only(['name', 'email', 'position', 'department', 'leave_balance', 'manager_id']);
+        $data['password'] = Hash::make($request->password);
+        $data['leave_balance'] = $data['leave_balance'] ?? 15;
+
+        $employee = $this->service->createEmployee($data);
 
         return response()->json([
             'message' => 'Employee created successfully',
@@ -104,7 +84,7 @@ class EmployeeController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $employee = Employee::find($id);
+        $employee = $this->service->getEmployeeById($id);
 
         if (!$employee) {
             return response()->json([
@@ -135,7 +115,7 @@ class EmployeeController extends Controller
             $dataToUpdate['password'] = Hash::make($request->password);
         }
 
-        $employee->update($dataToUpdate);
+        $employee = $this->service->updateEmployee($id, $dataToUpdate);
 
         return response()->json([
             'message' => 'Employee updated successfully',
@@ -148,15 +128,13 @@ class EmployeeController extends Controller
      */
     public function destroy($id)
     {
-        $employee = Employee::find($id);
+        $deleted = $this->service->deleteEmployee($id);
 
-        if (!$employee) {
+        if (!$deleted) {
             return response()->json([
                 'message' => 'Employee not found'
             ], 404);
         }
-
-        $employee->delete();
 
         return response()->json([
             'message' => 'Employee deleted successfully'
@@ -168,7 +146,7 @@ class EmployeeController extends Controller
      */
     public function subordinates($id)
     {
-        $employee = Employee::find($id);
+        $employee = $this->service->getEmployeeById($id);
 
         if (!$employee) {
             return response()->json([
@@ -176,9 +154,7 @@ class EmployeeController extends Controller
             ], 404);
         }
 
-        $subordinates = Employee::where('manager_id', $id)
-            ->select('id', 'name', 'email', 'position', 'department')
-            ->get();
+        $subordinates = $this->service->getSubordinates($id);
 
         return response()->json([
             'manager' => [
@@ -196,19 +172,7 @@ class EmployeeController extends Controller
      */
     public function statistics()
     {
-        $stats = [
-            'total_employees' => Employee::count(),
-            'by_position' => Employee::select('position')
-                ->selectRaw('COUNT(*) as count')
-                ->groupBy('position')
-                ->get(),
-            'by_department' => Employee::select('department')
-                ->selectRaw('COUNT(*) as count')
-                ->groupBy('department')
-                ->orderBy('count', 'desc')
-                ->get(),
-            'average_leave_balance' => Employee::avg('leave_balance'),
-        ];
+        $stats = $this->service->getStatistics();
 
         return response()->json($stats);
     }
@@ -218,7 +182,7 @@ class EmployeeController extends Controller
      */
     public function hierarchy($id)
     {
-        $employee = Employee::with(['manager', 'subordinates'])->find($id);
+        $employee = $this->service->getEmployeeHierarchy($id);
 
         if (!$employee) {
             return response()->json([
@@ -241,7 +205,7 @@ class EmployeeController extends Controller
      */
     public function updateLeaveBalance(Request $request, $id)
     {
-        $employee = Employee::find($id);
+        $employee = $this->service->getEmployeeById($id);
 
         if (!$employee) {
             return response()->json([
@@ -260,8 +224,7 @@ class EmployeeController extends Controller
             ], 422);
         }
 
-        $employee->leave_balance = $request->leave_balance;
-        $employee->save();
+        $employee = $this->service->updateLeaveBalance($id, $request->leave_balance);
 
         return response()->json([
             'message' => 'Leave balance updated successfully',
@@ -269,3 +232,4 @@ class EmployeeController extends Controller
         ]);
     }
 }
+
