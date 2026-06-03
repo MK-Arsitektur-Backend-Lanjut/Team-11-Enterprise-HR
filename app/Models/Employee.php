@@ -69,18 +69,18 @@ class Employee extends Authenticatable implements JWTSubject
     }
 
     /**
-     * Get the attendance records of the employee.
+     * Get all leave requests submitted by this employee.
      */
-    public function attendances()
+    public function leaveRequests()
     {
-        return $this->hasMany(Attendance::class);
+        return $this->hasMany(\App\Models\LeaveRequest::class, 'employee_id');
     }
 
     /**
-     * Get the leave records of the employee.
+     * Get all leave approvals where this employee is the approver.
      */
-    public function leaves()
+    public function leaveApprovals()
     {
-        return $this->hasMany(Leave::class);
+        return $this->hasMany(\App\Models\LeaveApproval::class, 'approver_id');
     }
 }
