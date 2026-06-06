@@ -5,15 +5,18 @@ namespace App\Services;
 use App\Models\Employee;
 use App\Repositories\LeaveRequestRepository;
 use App\Events\LeaveRequestStatusUpdated;
+use App\Services\EmployeeService;
 use Illuminate\Support\Facades\Log;
 
 class ApprovalWorkflowService
 {
     private $repository;
+    private $employeeService;
 
-    public function __construct(LeaveRequestRepository $repository)
+    public function __construct(LeaveRequestRepository $repository, EmployeeService $employeeService)
     {
         $this->repository = $repository;
+        $this->employeeService = $employeeService;
     }
 
     /**
@@ -199,36 +202,36 @@ class ApprovalWorkflowService
         // Finalisasi jika bukan manager atau ini persetujuan di Level 2
         $updatedRequest = $this->finalizeApproval($leaveRequest->id);
 
-        // Potong saldo cuti dari Employee Model
-        $start = new \DateTime($leaveRequest->start_date);
-        $end = new \DateTime($leaveRequest->end_date);
-        $daysRequested = $start->diff($end)->days + 1;
-
-        try {
-            $employee = Employee::find($leaveRequest->employee_id);
-            if ($employee) {
-                $currentBalance = $employee->leave_balance ?? 0;
-                $newBalance = max(0, $currentBalance - $daysRequested);
-
-                Log::info("Deducting leave balance for Employee ID: {$leaveRequest->employee_id}. Old: {$currentBalance}, New: {$newBalance}");
-
-                $employee->leave_balance = $newBalance;
-                $employee->save();
-            }
-        } catch (\Exception $e) {
-            Log::error("Failed to update Employee Leave Balance: " . $e->getMessage());
-        }
-
         $updatedRequest->load(['employee', 'approvals.approver']);
         return $updatedRequest;
     }
 
     /**
-     * Finalize the Leave Request status to approved.
+     * Finalize the Leave Request status to approved and deduct leave balance automatically.
      */
     private function finalizeApproval($leaveRequestId)
     {
         $updatedRequest = $this->repository->updateStatus($leaveRequestId, 'approved');
+
+        // Potong saldo cuti via EmployeeService secara otomatis
+        try {
+            $start = new \DateTime($updatedRequest->start_date);
+            $end = new \DateTime($updatedRequest->end_date);
+            $daysRequested = $start->diff($end)->days + 1;
+
+            $employee = $this->employeeService->getEmployeeById($updatedRequest->employee_id);
+            if ($employee) {
+                $currentBalance = $employee->leave_balance ?? 0;
+                $newBalance = max(0, $currentBalance - $daysRequested);
+
+                Log::info("Deducting leave balance for Employee ID: {$updatedRequest->employee_id}. Old: {$currentBalance}, New: {$newBalance}");
+
+                $this->employeeService->updateLeaveBalance($updatedRequest->employee_id, $newBalance);
+            }
+        } catch (\Exception $e) {
+            Log::error("Failed to automatically update Employee Leave Balance: " . $e->getMessage());
+        }
+
         event(new LeaveRequestStatusUpdated($updatedRequest));
         return $updatedRequest;
     }
