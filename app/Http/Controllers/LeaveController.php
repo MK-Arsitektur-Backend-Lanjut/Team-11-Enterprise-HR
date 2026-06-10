@@ -80,10 +80,7 @@ class LeaveController extends Controller
         }
 
         $requests = $this->repository->getRequestsByEmployee($employee->id);
-        
-        // Eager load relationships
-        $requests->load(['employee', 'approvals.approver']);
-        
+
         $leavesBalances = $this->workflowService->getEmployeeLeaveBalance($employee->id);
 
         return response()->json([
@@ -109,9 +106,6 @@ class LeaveController extends Controller
         }
 
         $requests = $this->workflowService->getSubordinateRequests($employee->id);
-        
-        // Eager load relationships
-        $requests->load(['employee', 'approvals.approver']);
 
         return response()->json([
             'success' => true,

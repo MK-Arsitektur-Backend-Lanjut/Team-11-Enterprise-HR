@@ -33,9 +33,6 @@ class ApprovalController extends Controller
         }
 
         $pendingApprovals = $this->repository->getPendingApprovalsFor($employee->id);
-        
-        // Eager load relationships
-        $pendingApprovals->load(['leaveRequest.employee', 'approver']);
 
         return response()->json([
             'success' => true,

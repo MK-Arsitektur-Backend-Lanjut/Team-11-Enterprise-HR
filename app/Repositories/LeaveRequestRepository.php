@@ -14,17 +14,17 @@ class LeaveRequestRepository
 
     public function getRequestsByEmployee($employeeId)
     {
-        return LeaveRequest::where('employee_id', $employeeId)->with('approvals')->orderByDesc('created_at')->get();
+        return LeaveRequest::where('employee_id', $employeeId)->with(['employee', 'approvals.approver'])->orderByDesc('created_at')->get();
     }
 
     public function getRequestsByEmployeeIds(array $employeeIds)
     {
-        return LeaveRequest::whereIn('employee_id', $employeeIds)->with('approvals')->orderByDesc('created_at')->get();
+        return LeaveRequest::whereIn('employee_id', $employeeIds)->with(['employee', 'approvals.approver'])->orderByDesc('created_at')->get();
     }
 
     public function getAllRequests()
     {
-        return LeaveRequest::with('approvals')->orderByDesc('created_at')->get();
+        return LeaveRequest::with(['employee', 'approvals.approver'])->orderByDesc('created_at')->get();
     }
 
     public function updateStatus($id, $status)
@@ -38,7 +38,7 @@ class LeaveRequestRepository
 
     public function getRequestById($id)
     {
-        return LeaveRequest::with('approvals')->findOrFail($id);
+        return LeaveRequest::with(['employee', 'approvals.approver'])->findOrFail($id);
     }
 
     public function createApprovalRecord($data)
@@ -50,7 +50,7 @@ class LeaveRequestRepository
     {
         return LeaveApproval::where('approver_id', $approverId)
             ->where('status', 'pending')
-            ->with('leaveRequest')
+            ->with(['leaveRequest.employee', 'approver'])
             ->get();
     }
 

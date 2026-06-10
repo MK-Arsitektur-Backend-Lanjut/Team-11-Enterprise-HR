@@ -6,6 +6,7 @@ use App\Models\Employee;
 use App\Repositories\LeaveRequestRepository;
 use App\Events\LeaveRequestStatusUpdated;
 use App\Services\EmployeeService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class ApprovalWorkflowService
@@ -25,15 +26,21 @@ class ApprovalWorkflowService
     public function getEmployeeLeaveBalance($employeeId)
     {
         try {
-            $employee = Employee::find($employeeId);
-            if ($employee) {
-                return $employee->leave_balance ?? 0;
-            }
+            // Redis Cache: data leave_balance jarang berubah, sering dibaca
+            return Cache::remember(
+                "employee:{$employeeId}:leave_balance",
+                now()->addMinutes(30),
+                function () use ($employeeId) {
+                    $employee = Employee::select('id', 'leave_balance')->find($employeeId);
+                    return $employee ? ($employee->leave_balance ?? 0) : 0;
+                }
+            );
         } catch (\Exception $e) {
             Log::error("Failed fetching employee balance: " . $e->getMessage());
+            // Fallback: query langsung ke database tanpa cache
+            $employee = Employee::select('id', 'leave_balance')->find($employeeId);
+            return $employee ? ($employee->leave_balance ?? 0) : 0;
         }
-
-        return 0;
     }
 
     /**
@@ -41,8 +48,10 @@ class ApprovalWorkflowService
      */
     public function submitLeaveRequest($employeeId, $data)
     {
-        // 0. Cek Saldo Cuti dari Employee Model
-        $employee = Employee::find($employeeId);
+        // 0. Cek Saldo Cuti dari Employee Model (Eager Load + Select Optimization)
+        $employee = Employee::select('id', 'leave_balance', 'position', 'manager_id')
+            ->with(['manager:id,manager_id', 'manager.manager:id'])
+            ->find($employeeId);
         
         if (!$employee) {
             throw new \Exception("Employee not found.");
@@ -93,7 +102,6 @@ class ApprovalWorkflowService
         if (strtolower($employee->position) === 'ceo') {
              $this->finalizeApproval($leaveRequest->id);
              $result = $this->repository->getRequestById($leaveRequest->id);
-             $result->load(['employee', 'approvals.approver']);
              $result->setAttribute('leaves_balances', $leaveBalances);
              return $result;
         }
@@ -126,7 +134,6 @@ class ApprovalWorkflowService
         }
 
         $result = $this->repository->getRequestById($leaveRequest->id);
-        $result->load(['employee', 'approvals.approver']);
         $result->setAttribute('leaves_balances', $leaveBalances);
         return $result;
     }
@@ -155,12 +162,12 @@ class ApprovalWorkflowService
 
             // "Jika level 1 menolak cuti maka status approval level 2 otomatis tidak disetujui/ditolak"
             if ($expectedLevel === 1) {
-                $employee = Employee::find($leaveRequest->employee_id);
+                $employee = Employee::select('id', 'position')->find($leaveRequest->employee_id);
                 $position = strtolower($employee->position ?? '');
 
                 if ($position === 'manager') {
-                    // Cari approver (manager level 1)
-                    $approver = Employee::find($approverId);
+                    // Cari approver (manager level 1) — eager load manager untuk level 2
+                    $approver = Employee::select('id', 'manager_id')->with('manager:id')->find($approverId);
                     if ($approver && $approver->manager) {
                         $level2ApproverId = $approver->manager->id;
                         
@@ -176,14 +183,14 @@ class ApprovalWorkflowService
                 }
             }
 
-            event(new LeaveRequestStatusUpdated($updatedRequest));
             $updatedRequest->load(['employee', 'approvals.approver']);
+            event(new LeaveRequestStatusUpdated($updatedRequest));
             return $updatedRequest;
         }
 
         // Jika disetujui, dan kita berada di Level 1
         if ($expectedLevel === 1) {
-            $employee = Employee::find($leaveRequest->employee_id);
+            $employee = Employee::select('id', 'position')->find($leaveRequest->employee_id);
             $position = strtolower($employee->position ?? '');
 
             // Sesuai rules: Jika posisi "Manager", maka masih butuh Level 2
@@ -194,7 +201,6 @@ class ApprovalWorkflowService
 
             if ($hasPendingLevel2) {
                 $result = $this->repository->getRequestById($leaveRequest->id);
-                $result->load(['employee', 'approvals.approver']);
                 return $result;
             }
         }
@@ -202,7 +208,6 @@ class ApprovalWorkflowService
         // Finalisasi jika bukan manager atau ini persetujuan di Level 2
         $updatedRequest = $this->finalizeApproval($leaveRequest->id);
 
-        $updatedRequest->load(['employee', 'approvals.approver']);
         return $updatedRequest;
     }
 
@@ -227,11 +232,15 @@ class ApprovalWorkflowService
                 Log::info("Deducting leave balance for Employee ID: {$updatedRequest->employee_id}. Old: {$currentBalance}, New: {$newBalance}");
 
                 $this->employeeService->updateLeaveBalance($updatedRequest->employee_id, $newBalance);
+
+                // Invalidasi Redis cache setelah saldo cuti berubah
+                Cache::forget("employee:{$updatedRequest->employee_id}:leave_balance");
             }
         } catch (\Exception $e) {
             Log::error("Failed to automatically update Employee Leave Balance: " . $e->getMessage());
         }
 
+        $updatedRequest->load(['employee', 'approvals.approver']);
         event(new LeaveRequestStatusUpdated($updatedRequest));
         return $updatedRequest;
     }
