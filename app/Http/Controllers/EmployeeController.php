@@ -56,7 +56,6 @@ class EmployeeController extends Controller
             'password' => 'required|string|min:6',
             'position' => 'required|string|max:100',
             'department' => 'required|string|max:100',
-            'leave_balance' => 'nullable|integer|min:0',
             'manager_id' => 'nullable|exists:employees,id',
         ]);
 
@@ -67,9 +66,9 @@ class EmployeeController extends Controller
             ], 422);
         }
 
-        $data = $request->only(['name', 'email', 'position', 'department', 'leave_balance', 'manager_id']);
+        $data = $request->only(['name', 'email', 'position', 'department', 'manager_id']);
         $data['password'] = Hash::make($request->password);
-        $data['leave_balance'] = $data['leave_balance'] ?? 15;
+        $data['leave_balance'] = 12;
 
         $employee = $this->service->createEmployee($data);
 
@@ -98,8 +97,6 @@ class EmployeeController extends Controller
             'password' => 'sometimes|string|min:6',
             'position' => 'sometimes|string|max:100',
             'department' => 'sometimes|string|max:100',
-            'leave_balance' => 'sometimes|integer|min:0',
-            'manager_id' => 'nullable|exists:employees,id',
         ]);
 
         if ($validator->fails()) {
@@ -109,7 +106,7 @@ class EmployeeController extends Controller
             ], 422);
         }
 
-        $dataToUpdate = $request->only(['name', 'email', 'position', 'department', 'leave_balance', 'manager_id']);
+        $dataToUpdate = $request->only(['name', 'email', 'position', 'department']);
         
         if ($request->has('password')) {
             $dataToUpdate['password'] = Hash::make($request->password);
