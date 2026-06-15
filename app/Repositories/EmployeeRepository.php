@@ -98,4 +98,20 @@ class EmployeeRepository
             'average_leave_balance' => Employee::avg('leave_balance'),
         ];
     }
+
+    public function updateManager($employeeId, $managerId)
+    {
+        $employee = Employee::find($employeeId);
+        if ($employee) {
+            $employee->manager_id = $managerId;
+            $employee->save();
+            return $employee;
+        }
+        return null;
+    }
+
+    public function updateManagerBulk(array $employeeIds, $managerId)
+    {
+        return Employee::whereIn('id', $employeeIds)->update(['manager_id' => $managerId]);
+    }
 }

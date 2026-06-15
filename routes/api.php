@@ -6,6 +6,7 @@ use App\Http\Controllers\LeaveController;
 use App\Http\Controllers\ApprovalController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\HierarchyController;
 
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
@@ -30,6 +31,14 @@ Route::middleware('auth:api')->group(function () {
         Route::get('/{id}/subordinates', [EmployeeController::class, 'subordinates']);
         Route::get('/{id}/hierarchy', [EmployeeController::class, 'hierarchy']);
         Route::put('/{id}/leave-balance', [EmployeeController::class, 'updateLeaveBalance']);
+
+        // Hierarchy Management (Requires HR or CEO access)
+        Route::middleware('hierarchy.access')->group(function () {
+            Route::put('/{id}/manager', [HierarchyController::class, 'assignManager']);
+            Route::delete('/{id}/manager', [HierarchyController::class, 'removeManager']);
+            Route::post('/{id}/subordinates', [HierarchyController::class, 'addSubordinates']);
+            Route::delete('/{id}/subordinates/{subordinate_id}', [HierarchyController::class, 'removeSubordinate']);
+        });
     });
 
     // ==================== LEAVE REQUEST ENDPOINTS ====================
