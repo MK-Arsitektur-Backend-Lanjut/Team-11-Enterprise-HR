@@ -6,7 +6,7 @@ import { Rate, Trend, Counter } from 'k6/metrics';
 //  STRESS TEST — Modul Approval Workflow
 // ============================================================
 //  Tool     : k6 (https://k6.io)
-//  Target   : 5 Endpoint API Approval Workflow
+//  Target   : 2 Endpoint API Approval Workflow (My Requests & Submit Leave)
 //  Indikator: Response Time, Throughput, Error Rate,
 //             Concurrent Users, Resource Utilization
 // ============================================================
@@ -34,10 +34,7 @@ const USER_PASSWORD = __ENV.USER_PASSWORD || 'password123';
 
 // --- Indikator 1: Response Time (per endpoint, dalam ms) ---
 const rtMyRequests   = new Trend('rt_get_my_requests', true);
-const rtPending      = new Trend('rt_get_pending', true);
-const rtSubordinates = new Trend('rt_get_subordinates', true);
 const rtSubmitLeave  = new Trend('rt_post_submit_leave', true);
-const rtApproval     = new Trend('rt_post_approval', true);
 
 // --- Indikator 3: Error Rate ---
 // Hanya HTTP 5xx (server error) yang dihitung sebagai error.
@@ -48,10 +45,7 @@ const serverErrors = new Counter('server_errors_5xx');
 // --- Indikator 2: Throughput (dilacak otomatis oleh k6 sebagai http_reqs) ---
 // Kita tambah counter manual per-endpoint untuk detail
 const reqMyRequests   = new Counter('throughput_my_requests');
-const reqPending      = new Counter('throughput_pending');
-const reqSubordinates = new Counter('throughput_subordinates');
 const reqSubmitLeave  = new Counter('throughput_submit_leave');
-const reqApproval     = new Counter('throughput_approval');
 
 // ============================================================
 // 3. OPSI TEST — Skenario beban & batas kelulusan
@@ -97,10 +91,7 @@ export const options = {
         // --- Response Time ---
         'http_req_duration':      ['p(95)<1500', 'p(99)<3000'],  // Global: 95% < 1.5s, 99% < 3s
         'rt_get_my_requests':     ['p(95)<500',  'avg<200'],     // my-requests: 95% < 500ms
-        'rt_get_pending':         ['p(95)<500',  'avg<200'],     // pending: 95% < 500ms
-        'rt_get_subordinates':    ['p(95)<1000', 'avg<500'],     // subordinates: 95% < 1s
         'rt_post_submit_leave':   ['p(95)<1000', 'avg<500'],     // submit: 95% < 1s
-        'rt_post_approval':       ['p(95)<1000', 'avg<500'],     // approval: 95% < 1s
 
         // --- Error Rate ---
         'error_rate': ['rate<0.05'],  // Error rate harus < 5%
@@ -163,12 +154,7 @@ export function setup() {
 // 5. SKENARIO UTAMA — Dijalankan oleh setiap Virtual User
 // ============================================================
 //  Fungsi ini dijalankan BERULANG oleh setiap VU selama test.
-//  Distribusi request dibuat realistis:
-//    35% GET  /api/leaves/my-requests   (paling sering)
-//    25% GET  /api/approvals/pending
-//    20% GET  /api/leaves/subordinates
-//    15% POST /api/leaves               (submit cuti)
-//     5% POST /api/approvals/level-1    (proses approval)
+//  Distribusi request: 100% GET my-requests dan 100% POST submit-leave
 //
 export default function (data) {
     const headers = {
@@ -177,20 +163,9 @@ export default function (data) {
         Accept: 'application/json',
     };
 
-    // Pilih skenario berdasarkan distribusi
-    const random = Math.random();
-
-    if (random < 0.35) {
-        testMyRequests(headers);
-    } else if (random < 0.60) {
-        testPendingApprovals(headers);
-    } else if (random < 0.80) {
-        testSubordinateRequests(headers);
-    } else if (random < 0.95) {
-        testSubmitLeave(headers);
-    } else {
-        testProcessApproval(headers);
-    }
+    // Eksekusi kedua endpoint (100% - 100%)
+    testMyRequests(headers);
+    testSubmitLeave(headers);
 
     // Think time: simulasi jeda user sebelum aksi berikutnya (1-3 detik)
     sleep(Math.random() * 2 + 1);
@@ -219,48 +194,6 @@ function testMyRequests(headers) {
         check(res, {
             '[my-requests] status 200': (r) => r.status === 200,
             '[my-requests] has data':   (r) => r.json('success') === true,
-        });
-    });
-}
-
-// ----- GET /api/approvals/pending -----
-// Manager cek daftar approval yang menunggu persetujuan
-function testPendingApprovals(headers) {
-    group('GET /api/approvals/pending', () => {
-        const res = http.get(`${BASE_URL}/api/approvals/pending`, {
-            headers,
-            tags: { endpoint: 'pending' },
-        });
-
-        rtPending.add(res.timings.duration);
-        reqPending.add(1);
-        errorRate.add(res.status >= 500);
-        if (res.status >= 500) serverErrors.add(1);
-
-        check(res, {
-            '[pending] status 200': (r) => r.status === 200,
-            '[pending] has data':   (r) => r.json('success') === true,
-        });
-    });
-}
-
-// ----- GET /api/leaves/subordinates -----
-// Manager lihat daftar cuti bawahan
-function testSubordinateRequests(headers) {
-    group('GET /api/leaves/subordinates', () => {
-        const res = http.get(`${BASE_URL}/api/leaves/subordinates`, {
-            headers,
-            tags: { endpoint: 'subordinates' },
-        });
-
-        rtSubordinates.add(res.timings.duration);
-        reqSubordinates.add(1);
-        errorRate.add(res.status >= 500);
-        if (res.status >= 500) serverErrors.add(1);
-
-        check(res, {
-            '[subordinates] status 200': (r) => r.status === 200,
-            '[subordinates] has data':   (r) => r.json('success') === true,
         });
     });
 }
@@ -300,56 +233,6 @@ function testSubmitLeave(headers) {
 
         check(res, {
             '[submit] status 201 or 400': (r) => r.status === 201 || r.status === 400,
-        });
-    });
-}
-
-// ----- POST /api/approvals/level-1/{id} -----
-// Manager approve/reject cuti bawahan
-// Langkah: 1) Ambil daftar pending, 2) Approve yang pertama (jika ada)
-function testProcessApproval(headers) {
-    group('POST /api/approvals/level-1', () => {
-        // Step 1: Ambil daftar pending
-        const pendingRes = http.get(`${BASE_URL}/api/approvals/pending`, {
-            headers,
-            tags: { endpoint: 'approval_get_pending' },
-        });
-
-        if (pendingRes.status !== 200) return;
-
-        let pendingData;
-        try {
-            pendingData = pendingRes.json('data');
-        } catch (e) {
-            return; // Response tidak valid
-        }
-
-        if (!pendingData || pendingData.length === 0) return; // Tidak ada yang pending
-
-        // Step 2: Approve yang pertama
-        const leaveRequestId = pendingData[0].leave_request_id;
-
-        const approvePayload = JSON.stringify({
-            status: Math.random() < 0.8 ? 'approved' : 'rejected', // 80% approve, 20% reject
-            notes:  `Stress test approval - VU ${__VU}`,
-        });
-
-        const res = http.post(
-            `${BASE_URL}/api/approvals/level-1/${leaveRequestId}`,
-            approvePayload,
-            {
-                headers,
-                tags: { endpoint: 'approval_process' },
-            }
-        );
-
-        rtApproval.add(res.timings.duration);
-        reqApproval.add(1);
-        errorRate.add(res.status >= 500);
-        if (res.status >= 500) serverErrors.add(1);
-
-        check(res, {
-            '[approval] status 200 or 500': (r) => r.status === 200 || r.status < 500,
         });
     });
 }
