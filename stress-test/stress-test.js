@@ -24,8 +24,8 @@ import { Rate, Trend, Counter } from 'k6/metrics';
 //           stress-test.js
 // ============================================================
 
-const BASE_URL    = __ENV.BASE_URL    || 'http://localhost';
-const USER_EMAIL  = __ENV.USER_EMAIL  || 'manager1.hr@enterprise.com';
+const BASE_URL = __ENV.BASE_URL || 'http://localhost';
+const USER_EMAIL = __ENV.USER_EMAIL || 'manager1.hr@enterprise.com';
 const USER_PASSWORD = __ENV.USER_PASSWORD || 'password123';
 
 // ============================================================
@@ -33,8 +33,8 @@ const USER_PASSWORD = __ENV.USER_PASSWORD || 'password123';
 // ============================================================
 
 // --- Indikator 1: Response Time (per endpoint, dalam ms) ---
-const rtMyRequests   = new Trend('rt_get_my_requests', true);
-const rtSubmitLeave  = new Trend('rt_post_submit_leave', true);
+const rtMyRequests = new Trend('rt_get_my_requests', true);
+const rtSubmitLeave = new Trend('rt_post_submit_leave', true);
 
 // --- Indikator 3: Error Rate ---
 // Hanya HTTP 5xx (server error) yang dihitung sebagai error.
@@ -44,8 +44,8 @@ const serverErrors = new Counter('server_errors_5xx');
 
 // --- Indikator 2: Throughput (dilacak otomatis oleh k6 sebagai http_reqs) ---
 // Kita tambah counter manual per-endpoint untuk detail
-const reqMyRequests   = new Counter('throughput_my_requests');
-const reqSubmitLeave  = new Counter('throughput_submit_leave');
+const reqMyRequests = new Counter('throughput_my_requests');
+const reqSubmitLeave = new Counter('throughput_submit_leave');
 
 // ============================================================
 // 3. OPSI TEST — Skenario beban & batas kelulusan
@@ -71,15 +71,15 @@ export const options = {
     stages: [
         // ===== TAHAP 1: NORMAL LOAD (50 users) =====
         { duration: '30s', target: 50 },    // Naikkan perlahan ke 50 users
-        { duration: '2m',  target: 50 },    // Tahan 50 users selama 2 menit
+        { duration: '2m', target: 50 },    // Tahan 50 users selama 2 menit
 
         // ===== TAHAP 2: PEAK LOAD (150 users) =====
         { duration: '30s', target: 150 },   // Naikkan ke 150 users
-        { duration: '2m',  target: 150 },   // Tahan 150 users selama 2 menit
+        { duration: '2m', target: 150 },   // Tahan 150 users selama 2 menit
 
         // ===== TAHAP 3: STRESS TEST (300 users) =====
         { duration: '30s', target: 300 },   // Naikkan ke 300 users
-        { duration: '2m',  target: 300 },   // Tahan 300 users selama 2 menit
+        { duration: '2m', target: 300 },   // Tahan 300 users selama 2 menit
 
         // ===== RECOVERY =====
         { duration: '30s', target: 0 },     // Turunkan ke 0 (amati pemulihan)
@@ -89,9 +89,9 @@ export const options = {
     // Jika melewati batas → k6 menandai FAIL (❌)
     thresholds: {
         // --- Response Time ---
-        'http_req_duration':      ['p(95)<1500', 'p(99)<3000'],  // Global: 95% < 1.5s, 99% < 3s
-        'rt_get_my_requests':     ['p(95)<500',  'avg<200'],     // my-requests: 95% < 500ms
-        'rt_post_submit_leave':   ['p(95)<1000', 'avg<500'],     // submit: 95% < 1s
+        'http_req_duration': ['p(95)<1500', 'p(99)<3000'],  // Global: 95% < 1.5s, 99% < 3s
+        'rt_get_my_requests': ['p(95)<500', 'avg<200'],     // my-requests: 95% < 500ms
+        'rt_post_submit_leave': ['p(95)<1000', 'avg<500'],     // submit: 95% < 1s
 
         // --- Error Rate ---
         'error_rate': ['rate<0.05'],  // Error rate harus < 5%
@@ -193,7 +193,7 @@ function testMyRequests(headers) {
         // Validasi response
         check(res, {
             '[my-requests] status 200': (r) => r.status === 200,
-            '[my-requests] has data':   (r) => r.json('success') === true,
+            '[my-requests] has data': (r) => r.json('success') === true,
         });
     });
 }
@@ -206,16 +206,16 @@ function testSubmitLeave(headers) {
     group('POST /api/leaves', () => {
         // Generate tanggal acak di masa depan agar unik
         const month = Math.floor(Math.random() * 6) + 7; // Jul-Dec
-        const day   = Math.floor(Math.random() * 20) + 1; // 1-20
+        const day = Math.floor(Math.random() * 20) + 1; // 1-20
         const startDate = `2026-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const endDay    = Math.min(day + Math.floor(Math.random() * 2) + 1, 28);
-        const endDate   = `2026-${String(month).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`;
+        const endDay = Math.min(day + Math.floor(Math.random() * 2) + 1, 28);
+        const endDate = `2026-${String(month).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`;
 
         const payload = JSON.stringify({
             start_date: startDate,
-            end_date:   endDate,
-            reason:     `Stress test - VU ${__VU} Iter ${__ITER}`,
-            type:       'annual',
+            end_date: endDate,
+            reason: `Stress test - VU ${__VU} Iter ${__ITER}`,
+            type: 'annual',
         });
 
         const res = http.post(`${BASE_URL}/api/leaves`, payload, {
