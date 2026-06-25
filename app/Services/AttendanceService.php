@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Repositories\AttendanceRepository;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 class AttendanceService
 {
@@ -29,9 +30,10 @@ class AttendanceService
      * Determines status (present/late) based on work start time (08:00).
      *
      * @param int $employeeId
+     * @param string|null $notes
      * @return array
      */
-    public function clockIn(int $employeeId): array
+    public function clockIn(int $employeeId, ?string $notes = null): array
     {
         $now = Carbon::now();
         $today = $now->toDateString();
@@ -63,8 +65,12 @@ class AttendanceService
             $today,
             $currentTime,
             $status,
-            $lateMinutes
+            $lateMinutes,
+            $notes
         );
+
+        // Invalidate attendance cache after clock-in
+        CacheService::invalidateAttendance($employeeId, $today);
 
         return [
             'success' => true,
@@ -80,9 +86,10 @@ class AttendanceService
      * Calculates total work hours.
      *
      * @param int $employeeId
+     * @param string|null $notes
      * @return array
      */
-    public function clockOut(int $employeeId): array
+    public function clockOut(int $employeeId, ?string $notes = null): array
     {
         $now = Carbon::now();
         $today = $now->toDateString();
@@ -111,7 +118,10 @@ class AttendanceService
         $clockOut = Carbon::createFromFormat('H:i:s', $currentTime);
         $workHours = round(abs($clockOut->diffInMinutes($clockIn)) / 60, 2);
 
-        $attendance = $this->attendanceRepository->clockOut($attendance, $currentTime, $workHours);
+        $attendance = $this->attendanceRepository->clockOut($attendance, $currentTime, $workHours, $notes);
+
+        // Invalidate attendance cache after clock-out
+        CacheService::invalidateAttendance($employeeId, $today);
 
         return [
             'success' => true,
@@ -122,6 +132,7 @@ class AttendanceService
 
     /**
      * Get attendance report for a specific employee within a custom date range.
+     * Results are cached for 5 minutes.
      *
      * @param int $employeeId
      * @param string $startDate
@@ -130,22 +141,27 @@ class AttendanceService
      */
     public function getAttendanceReport(int $employeeId, string $startDate, string $endDate): array
     {
-        $records = $this->attendanceRepository->getByEmployeeAndDateRange($employeeId, $startDate, $endDate);
-        $summary = $this->attendanceRepository->getEmployeeSummary($employeeId, $startDate, $endDate);
+        $cacheKey = "attendance:report:{$employeeId}:{$startDate}:{$endDate}";
 
-        return [
-            'employee_id' => $employeeId,
-            'period' => [
-                'start_date' => $startDate,
-                'end_date' => $endDate,
-            ],
-            'summary' => $summary,
-            'records' => $records,
-        ];
+        return Cache::remember($cacheKey, now()->addMinutes(CacheService::MEDIUM_TTL), function () use ($employeeId, $startDate, $endDate) {
+            $records = $this->attendanceRepository->getByEmployeeAndDateRange($employeeId, $startDate, $endDate);
+            $summary = $this->attendanceRepository->getEmployeeSummary($employeeId, $startDate, $endDate);
+
+            return [
+                'employee_id' => $employeeId,
+                'period' => [
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
+                ],
+                'summary' => $summary,
+                'records' => $records,
+            ];
+        });
     }
 
     /**
      * Get monthly attendance report for a specific employee.
+     * Results are cached for 10 minutes.
      *
      * @param int $employeeId
      * @param int $month
@@ -154,15 +170,20 @@ class AttendanceService
      */
     public function getMonthlyReport(int $employeeId, int $month, int $year): array
     {
-        $startDate = Carbon::create($year, $month, 1)->startOfMonth()->toDateString();
-        $endDate = Carbon::create($year, $month, 1)->endOfMonth()->toDateString();
+        $cacheKey = "attendance:monthly:{$employeeId}:{$year}:{$month}";
 
-        return $this->getAttendanceReport($employeeId, $startDate, $endDate);
+        return Cache::remember($cacheKey, now()->addMinutes(CacheService::DEFAULT_TTL), function () use ($employeeId, $month, $year) {
+            $startDate = Carbon::create($year, $month, 1)->startOfMonth()->toDateString();
+            $endDate = Carbon::create($year, $month, 1)->endOfMonth()->toDateString();
+
+            return $this->getAttendanceReport($employeeId, $startDate, $endDate);
+        });
     }
 
     /**
      * Get attendance report for all employees within a date range.
      * This is used by HR to view the full report.
+     * Results are cached for 5 minutes.
      *
      * @param string $startDate
      * @param string $endDate
@@ -170,35 +191,39 @@ class AttendanceService
      */
     public function getAllEmployeesReport(string $startDate, string $endDate): array
     {
-        $records = $this->attendanceRepository->getAllEmployeesReport($startDate, $endDate);
+        $cacheKey = "attendance:all:{$startDate}:{$endDate}";
 
-        // Group records by employee
-        $grouped = $records->groupBy('employee_id')->map(function ($employeeRecords) use ($startDate, $endDate) {
-            $employee = $employeeRecords->first()->employee;
+        return Cache::remember($cacheKey, now()->addMinutes(CacheService::MEDIUM_TTL), function () use ($startDate, $endDate) {
+            $records = $this->attendanceRepository->getAllEmployeesReport($startDate, $endDate);
+
+            // Group records by employee
+            $grouped = $records->groupBy('employee_id')->map(function ($employeeRecords) use ($startDate, $endDate) {
+                $employee = $employeeRecords->first()->employee;
+
+                return [
+                    'employee' => $employee,
+                    'summary' => [
+                        'total_records' => $employeeRecords->count(),
+                        'present' => $employeeRecords->where('status', 'present')->count(),
+                        'late' => $employeeRecords->where('status', 'late')->count(),
+                        'absent' => $employeeRecords->where('status', 'absent')->count(),
+                        'leave' => $employeeRecords->where('status', 'leave')->count(),
+                        'half_day' => $employeeRecords->where('status', 'half_day')->count(),
+                        'total_late_minutes' => $employeeRecords->sum('late_minutes'),
+                        'total_work_hours' => (float) $employeeRecords->sum('work_hours'),
+                    ],
+                    'records' => $employeeRecords,
+                ];
+            });
 
             return [
-                'employee' => $employee,
-                'summary' => [
-                    'total_records' => $employeeRecords->count(),
-                    'present' => $employeeRecords->where('status', 'present')->count(),
-                    'late' => $employeeRecords->where('status', 'late')->count(),
-                    'absent' => $employeeRecords->where('status', 'absent')->count(),
-                    'leave' => $employeeRecords->where('status', 'leave')->count(),
-                    'half_day' => $employeeRecords->where('status', 'half_day')->count(),
-                    'total_late_minutes' => $employeeRecords->sum('late_minutes'),
-                    'total_work_hours' => (float) $employeeRecords->sum('work_hours'),
+                'period' => [
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
                 ],
-                'records' => $employeeRecords,
+                'total_employees' => $grouped->count(),
+                'data' => $grouped->values(),
             ];
         });
-
-        return [
-            'period' => [
-                'start_date' => $startDate,
-                'end_date' => $endDate,
-            ],
-            'total_employees' => $grouped->count(),
-            'data' => $grouped->values(),
-        ];
     }
 }

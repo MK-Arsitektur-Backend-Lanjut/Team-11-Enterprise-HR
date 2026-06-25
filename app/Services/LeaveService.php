@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Repositories\LeaveRepository;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -80,7 +81,15 @@ class LeaveService
                     ]
                 );
                 $syncedCount++;
+
+                // Invalidate cache for each synced employee
+                if (isset($leaveData['employee_id'])) {
+                    CacheService::invalidateLeave($leaveData['employee_id']);
+                }
             }
+
+            // Invalidate all leaves cache after sync
+            CacheService::invalidateAllLeaves();
 
             return [
                 'success' => true,
@@ -103,13 +112,18 @@ class LeaveService
 
     /**
      * Get leave records for a specific employee.
+     * Results are cached for 5 minutes.
      *
      * @param int $employeeId
      * @return \Illuminate\Database\Eloquent\Collection
      */
     public function getEmployeeLeaves(int $employeeId)
     {
-        return $this->leaveRepository->getByEmployee($employeeId);
+        $cacheKey = "leaves:employee:{$employeeId}";
+
+        return Cache::remember($cacheKey, now()->addMinutes(CacheService::MEDIUM_TTL), function () use ($employeeId) {
+            return $this->leaveRepository->getByEmployee($employeeId);
+        });
     }
 
     /**
@@ -125,17 +139,24 @@ class LeaveService
 
     /**
      * Get all leaves with optional filters.
+     * Results are cached for 3 minutes.
      *
      * @param array $filters
      * @return \Illuminate\Database\Eloquent\Collection
      */
     public function getAllLeaves(array $filters = [])
     {
-        return $this->leaveRepository->getAllWithFilters($filters);
+        $filterHash = md5(json_encode($filters));
+        $cacheKey = "leaves:all:{$filterHash}";
+
+        return Cache::remember($cacheKey, now()->addMinutes(CacheService::SHORT_TTL), function () use ($filters) {
+            return $this->leaveRepository->getAllWithFilters($filters);
+        });
     }
 
     /**
      * Get leave data for payroll export within a custom date range.
+     * Results are cached for 10 minutes.
      *
      * @param string $startDate
      * @param string $endDate
@@ -143,45 +164,49 @@ class LeaveService
      */
     public function getPayrollLeaveData(string $startDate, string $endDate): array
     {
-        $leaves = $this->leaveRepository->getApprovedLeavesSummary($startDate, $endDate);
+        $cacheKey = "leaves:payroll:{$startDate}:{$endDate}";
 
-        // Group by employee for payroll summary
-        $grouped = $leaves->groupBy('employee_id')->map(function ($employeeLeaves) {
-            $employee = $employeeLeaves->first()->employee;
+        return Cache::remember($cacheKey, now()->addMinutes(CacheService::DEFAULT_TTL), function () use ($startDate, $endDate) {
+            $leaves = $this->leaveRepository->getApprovedLeavesSummary($startDate, $endDate);
 
-            $leaveByType = $employeeLeaves->groupBy('leave_type')->map(function ($typeLeaves) {
-                return $typeLeaves->sum('total_days');
+            // Group by employee for payroll summary
+            $grouped = $leaves->groupBy('employee_id')->map(function ($employeeLeaves) {
+                $employee = $employeeLeaves->first()->employee;
+
+                $leaveByType = $employeeLeaves->groupBy('leave_type')->map(function ($typeLeaves) {
+                    return $typeLeaves->sum('total_days');
+                });
+
+                return [
+                    'employee_id' => $employee->id,
+                    'employee_name' => $employee->name,
+                    'email' => $employee->email,
+                    'department' => $employee->department,
+                    'position' => $employee->position,
+                    'total_leave_days' => $employeeLeaves->sum('total_days'),
+                    'leave_breakdown' => $leaveByType,
+                    'leave_details' => $employeeLeaves->map(function ($leave) {
+                        return [
+                            'leave_type' => $leave->leave_type,
+                            'start_date' => $leave->start_date->format('Y-m-d'),
+                            'end_date' => $leave->end_date->format('Y-m-d'),
+                            'total_days' => $leave->total_days,
+                            'reason' => $leave->reason,
+                        ];
+                    }),
+                ];
             });
 
             return [
-                'employee_id' => $employee->id,
-                'employee_name' => $employee->name,
-                'email' => $employee->email,
-                'department' => $employee->department,
-                'position' => $employee->position,
-                'total_leave_days' => $employeeLeaves->sum('total_days'),
-                'leave_breakdown' => $leaveByType,
-                'leave_details' => $employeeLeaves->map(function ($leave) {
-                    return [
-                        'leave_type' => $leave->leave_type,
-                        'start_date' => $leave->start_date->format('Y-m-d'),
-                        'end_date' => $leave->end_date->format('Y-m-d'),
-                        'total_days' => $leave->total_days,
-                        'reason' => $leave->reason,
-                    ];
-                }),
+                'period' => [
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
+                ],
+                'total_employees_with_leave' => $grouped->count(),
+                'total_leave_days' => $leaves->sum('total_days'),
+                'data' => $grouped->values(),
             ];
         });
-
-        return [
-            'period' => [
-                'start_date' => $startDate,
-                'end_date' => $endDate,
-            ],
-            'total_employees_with_leave' => $grouped->count(),
-            'total_leave_days' => $leaves->sum('total_days'),
-            'data' => $grouped->values(),
-        ];
     }
 
     /**

@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('password');
             $table->string('position');
             $table->string('department');
-            $table->integer('leave_balance')->default(0);
+            $table->integer('leave_balance')->default(12);
       	    $table->foreignId('manager_id')->nullable()->constrained('employees')->nullOnDelete();
             $table->timestamps();
         });

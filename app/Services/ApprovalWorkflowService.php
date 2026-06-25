@@ -6,6 +6,7 @@ use App\Models\Employee;
 use App\Repositories\LeaveRequestRepository;
 use App\Events\LeaveRequestStatusUpdated;
 use App\Services\EmployeeService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class ApprovalWorkflowService
@@ -21,19 +22,24 @@ class ApprovalWorkflowService
 
     /**
      * Fetch leave balance from Employee Model (Monolith)
+     * Results are cached for 5 minutes.
      */
     public function getEmployeeLeaveBalance($employeeId)
     {
-        try {
-            $employee = Employee::find($employeeId);
-            if ($employee) {
-                return $employee->leave_balance ?? 0;
-            }
-        } catch (\Exception $e) {
-            Log::error("Failed fetching employee balance: " . $e->getMessage());
-        }
+        $cacheKey = "employee:leave_balance:{$employeeId}";
 
-        return 0;
+        return Cache::remember($cacheKey, now()->addMinutes(CacheService::MEDIUM_TTL), function () use ($employeeId) {
+            try {
+                $employee = Employee::find($employeeId);
+                if ($employee) {
+                    return $employee->leave_balance ?? 0;
+                }
+            } catch (\Exception $e) {
+                Log::error("Failed fetching employee balance: " . $e->getMessage());
+            }
+
+            return 0;
+        });
     }
 
     /**
@@ -95,6 +101,11 @@ class ApprovalWorkflowService
              $result = $this->repository->getRequestById($leaveRequest->id);
              $result->load(['employee', 'approvals.approver']);
              $result->setAttribute('leaves_balances', $leaveBalances);
+
+             // Invalidate cache after leave submission
+             CacheService::invalidateLeave($employeeId);
+             CacheService::invalidateEmployee($employeeId);
+
              return $result;
         }
 
@@ -128,6 +139,11 @@ class ApprovalWorkflowService
         $result = $this->repository->getRequestById($leaveRequest->id);
         $result->load(['employee', 'approvals.approver']);
         $result->setAttribute('leaves_balances', $leaveBalances);
+
+        // Invalidate cache after leave submission
+        CacheService::invalidateLeave($employeeId);
+        CacheService::invalidateEmployee($employeeId);
+
         return $result;
     }
 
@@ -178,6 +194,11 @@ class ApprovalWorkflowService
 
             event(new LeaveRequestStatusUpdated($updatedRequest));
             $updatedRequest->load(['employee', 'approvals.approver']);
+
+            // Invalidate cache after approval processing
+            CacheService::invalidateLeave($leaveRequest->employee_id);
+            CacheService::invalidateEmployee($leaveRequest->employee_id);
+
             return $updatedRequest;
         }
 
@@ -203,6 +224,11 @@ class ApprovalWorkflowService
         $updatedRequest = $this->finalizeApproval($leaveRequest->id);
 
         $updatedRequest->load(['employee', 'approvals.approver']);
+
+        // Invalidate cache after approval processing
+        CacheService::invalidateLeave($leaveRequest->employee_id);
+        CacheService::invalidateEmployee($leaveRequest->employee_id);
+
         return $updatedRequest;
     }
 
@@ -256,17 +282,22 @@ class ApprovalWorkflowService
 
     /**
      * Get Leave Requests from Subordinates
+     * Results are cached for 10 minutes.
      */
     public function getSubordinateRequests($employeeId)
     {
-        $employee = Employee::with('subordinates')->find($employeeId);
+        $cacheKey = "subordinate:requests:{$employeeId}";
 
-        if (!$employee || $employee->subordinates->isEmpty()) {
-            return collect([]);
-        }
+        return Cache::remember($cacheKey, now()->addMinutes(CacheService::DEFAULT_TTL), function () use ($employeeId) {
+            $employee = Employee::with('subordinates')->find($employeeId);
 
-        $subordinateIds = $employee->subordinates->pluck('id')->toArray();
+            if (!$employee || $employee->subordinates->isEmpty()) {
+                return collect([]);
+            }
 
-        return $this->repository->getRequestsByEmployeeIds($subordinateIds);
+            $subordinateIds = $employee->subordinates->pluck('id')->toArray();
+
+            return $this->repository->getRequestsByEmployeeIds($subordinateIds);
+        });
     }
 }

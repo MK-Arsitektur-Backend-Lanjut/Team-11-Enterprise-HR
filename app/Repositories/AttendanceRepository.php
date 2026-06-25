@@ -29,9 +29,10 @@ class AttendanceRepository
      * @param string $clockIn
      * @param string $status
      * @param int $lateMinutes
+     * @param string|null $notes
      * @return Attendance
      */
-    public function clockIn(int $employeeId, string $date, string $clockIn, string $status, int $lateMinutes): Attendance
+    public function clockIn(int $employeeId, string $date, string $clockIn, string $status, int $lateMinutes, ?string $notes = null): Attendance
     {
         return Attendance::updateOrCreate(
             [
@@ -42,6 +43,7 @@ class AttendanceRepository
                 'clock_in' => $clockIn,
                 'status' => $status,
                 'late_minutes' => $lateMinutes,
+                'notes' => $notes,
             ]
         );
     }
@@ -52,14 +54,21 @@ class AttendanceRepository
      * @param Attendance $attendance
      * @param string $clockOut
      * @param float $workHours
+     * @param string|null $notes
      * @return Attendance
      */
-    public function clockOut(Attendance $attendance, string $clockOut, float $workHours): Attendance
+    public function clockOut(Attendance $attendance, string $clockOut, float $workHours, ?string $notes = null): Attendance
     {
-        $attendance->update([
+        $data = [
             'clock_out' => $clockOut,
             'work_hours' => $workHours,
-        ]);
+        ];
+
+        if ($notes !== null) {
+            $data['notes'] = $notes;
+        }
+
+        $attendance->update($data);
 
         return $attendance;
     }

@@ -21,7 +21,7 @@ Dokumentasi lengkap untuk menjalankan dan menguji semua endpoint API pada sistem
 
 ## 🗂 Daftar Semua URL Endpoint
 
-> Base URL: `http://127.0.0.1:8003/api`
+> Base URL: `http://localhost:8003/api`
 
 ### 🔓 Public (Tanpa Token)
 
@@ -94,25 +94,47 @@ Dokumentasi lengkap untuk menjalankan dan menguji semua endpoint API pada sistem
 
 ## 🚀 Setup Awal
 
+> **⚠️ Perhatian:** Project ini sekarang menggunakan **Laravel Sail** (Docker) dan **Redis** untuk caching & antrian. Pastikan Docker Desktop sudah terinstall dan berjalan di komputer Anda.
+
 ### 1. Environment Variables di Postman
 
 Buat environment baru di Postman dengan variabel berikut:
 
 | Variable       | Value                          |
 |----------------|--------------------------------|
-| `base_url`     | `http://127.0.0.1:8003/api`   |
+| `base_url`     | `http://localhost:8003/api`    |
 | `token`        | *(kosongkan, akan diisi otomatis)* |
 
-### 2. Jalankan Server
+### 2. Jalankan Server (Docker/Sail)
 
+Pertama, pastikan semua dependensi terinstall:
 ```bash
-php artisan serve --port=8003
+composer install
+```
+
+Pastikan **Docker Desktop** sudah berjalan, lalu jalankan container (PHP, MySQL, Redis):
+```bash
+# Di Windows (PowerShell)
+docker compose up -d
+
+# Di Linux / macOS / WSL
+./vendor/bin/sail up -d
+```
+*(Aplikasi akan berjalan di `http://localhost:8003`)*
+
+Untuk menghentikan semua container:
+```bash
+docker compose down
 ```
 
 ### 3. Jalankan Migration & Seeder
 
 ```bash
-php artisan migrate:fresh --seed
+# Di Windows (PowerShell) — jalankan artisan melalui container
+docker compose exec laravel.test php artisan migrate:fresh --seed
+
+# Di Linux / macOS / WSL
+./vendor/bin/sail artisan migrate:fresh --seed
 ```
 
 > **Seeder** akan membuat: 1 CEO, 10 Director, 50 Manager, dan 4939 Staff.
@@ -1176,15 +1198,42 @@ GET /api/leaves/my-requests → cek status "approved" dan leaves_balances berkur
 
 ### Skenario 2: Level 1 Reject (Auto-Reject Level 2)
 
-```
-Langkah 1-2: Sama seperti Skenario 1
+### 5.2 Flow Alternatif: Level 1 Reject
+- (Ulangi step 1-3)
+- Approve/Reject Level 1 (POST `/api/approvals/level-1/...`) dengan `status: "rejected"`
+- Check GET `/api/leaves/my-requests` -> Status `leave_request` menjadi `rejected`. Level 2 otomatis rejected atau dibatalkan, saldo tidak dipotong.
 
-Langkah 3: Login sebagai Manager
-Langkah 4: Reject Level 1
-POST /api/approvals/level-1/{leave_request_id} → { "status": "rejected", "notes": "Timing tidak tepat" }
-→ Level 2 otomatis auto-rejected
-→ Leave balance TIDAK berubah
-```
+---
+
+## ⚡ Redis Caching Strategy
+
+Dalam sistem **Enterprise HR**, Redis digunakan secara ekstensif pada service layer untuk meningkatkan performa, mengurangi beban database (MySQL), dan mempercepat response time. 
+
+Berikut adalah data yang di-cache di Redis beserta alasannya:
+
+### 1. Employee Management
+- **Data:** Detail Profil Karyawan, Hierarki (Manager-Bawahan), Daftar Bawahan, dan Statistik Perusahaan.
+- **Alasan:** Data karyawan adalah data yang sangat sering dibaca (read-heavy) oleh berbagai fitur lain, tetapi jarang berubah. Cache membantu mempercepat response terutama untuk struktur hierarki (yang memerlukan *self-referencing join* yang mahal di DB).
+- **TTL (Time to Live):** 5-10 menit.
+- **Invalidasi:** Cache dihapus saat ada update data karyawan atau perubahan saldo cuti.
+
+### 2. Leave Request & Approval
+- **Data:** Saldo Cuti Karyawan, Daftar Pengajuan Cuti Bawahan (untuk Manager).
+- **Alasan:** Pengecekan saldo cuti dan validasi berulang kali dilakukan saat seseorang mengajukan cuti. Manager juga akan sering membuka dashboard untuk melihat permintaan cuti bawahannya.
+- **TTL (Time to Live):** 5-10 menit.
+- **Invalidasi:** Cache dihapus segera setelah karyawan mengajukan cuti baru atau ada keputusan approval/reject dari manager.
+
+### 3. Leave Data (Attendance Module)
+- **Data:** Riwayat Cuti Pribadi, Daftar Seluruh Cuti (dengan filter), dan Data Sinkronisasi Payroll.
+- **Alasan:** Data payroll membutuhkan agregasi dari banyak baris data cuti, yang membebani database jika dihitung berulang. Caching mempercepat export dan view.
+- **TTL (Time to Live):** 3-10 menit.
+- **Invalidasi:** Cache dihapus ketika sinkronisasi antar service (`/api/v1/leaves/sync`) dijalankan.
+
+### 4. Attendance (Kehadiran)
+- **Data:** Laporan Kehadiran Individu, Laporan Bulanan, Laporan Seluruh Karyawan (untuk HR).
+- **Alasan:** Report absensi membutuhkan query rentang waktu (date range) dan agregasi (menghitung keterlambatan, jam kerja, total absensi) yang sangat berat untuk dieksekusi secara real-time pada 5000+ karyawan.
+- **TTL (Time to Live):** 5-10 menit.
+- **Invalidasi:** Cache langsung dihapus (`invalidateAttendance`) setiap kali ada karyawan yang melakukan **Clock-In** atau **Clock-Out** agar data di laporan tetap *real-time*.
 
 ---
 

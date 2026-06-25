@@ -25,10 +25,11 @@ class AttendanceController extends Controller
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function clockIn()
+    public function clockIn(Request $request)
     {
         $employeeId = auth('api')->id();
-        $result = $this->attendanceService->clockIn($employeeId);
+        $notes = $request->input('notes');
+        $result = $this->attendanceService->clockIn($employeeId, $notes);
 
         return response()->json($result, $result['success'] ? 200 : 400);
     }
@@ -40,10 +41,11 @@ class AttendanceController extends Controller
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function clockOut()
+    public function clockOut(Request $request)
     {
         $employeeId = auth('api')->id();
-        $result = $this->attendanceService->clockOut($employeeId);
+        $notes = $request->input('notes');
+        $result = $this->attendanceService->clockOut($employeeId, $notes);
 
         return response()->json($result, $result['success'] ? 200 : 400);
     }
