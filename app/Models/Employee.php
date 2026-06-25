@@ -6,7 +6,25 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Tymon\JWTAuth\Contracts\JWTSubject;
+use OpenApi\Attributes as OA;
 
+#[OA\Schema(
+    schema: "Employee",
+    title: "Employee Model",
+    description: "Employee representation",
+    required: ["id", "name", "email", "position", "department", "leave_balance"],
+    properties: [
+        new OA\Property(property: "id", type: "integer", example: 1),
+        new OA\Property(property: "name", type: "string", example: "John Doe"),
+        new OA\Property(property: "email", type: "string", format: "email", example: "john@enterprise.com"),
+        new OA\Property(property: "position", type: "string", example: "Software Engineer"),
+        new OA\Property(property: "department", type: "string", example: "IT"),
+        new OA\Property(property: "leave_balance", type: "integer", example: 12),
+        new OA\Property(property: "manager_id", type: "integer", nullable: true, example: null),
+        new OA\Property(property: "created_at", type: "string", format: "date-time", example: "2024-01-01T00:00:00.000000Z"),
+        new OA\Property(property: "updated_at", type: "string", format: "date-time", example: "2024-01-01T00:00:00.000000Z")
+    ]
+)]
 class Employee extends Authenticatable implements JWTSubject
 {
     use HasFactory, Notifiable;

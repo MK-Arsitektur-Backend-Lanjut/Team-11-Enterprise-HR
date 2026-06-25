@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Services\ApprovalWorkflowService;
 use App\Repositories\LeaveRequestRepository;
+use OpenApi\Attributes as OA;
 
+#[OA\Tag(name: "Approval", description: "API Endpoints for Approval")]
 class ApprovalController extends Controller
 {
     private $workflowService;
@@ -17,10 +19,22 @@ class ApprovalController extends Controller
         $this->repository = $repository;
     }
 
-    /**
-     * GET /api/approvals/pending
-     * Get pending approvals for the current approver/manager.
-     */
+    #[OA\Get(
+        path: "/api/approvals/pending",
+        summary: "Get pending approvals for the current approver/manager",
+        security: [["bearerAuth" => []]],
+        tags: ["Approval"]
+    )]
+    #[OA\Response(
+        response: 200,
+        description: "Successful operation",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "success", type: "boolean"),
+                new OA\Property(property: "data", type: "array", items: new OA\Items(ref: "#/components/schemas/LeaveRequest"))
+            ]
+        )
+    )]
     public function pending(Request $request)
     {
         $employee = auth('api')->user();
@@ -40,10 +54,37 @@ class ApprovalController extends Controller
         ], 200);
     }
 
-    /**
-     * POST /api/approvals/level-1/{leave_request_id}
-     * Approve or reject a leave request with notes.
-     */
+    #[OA\Post(
+        path: "/api/approvals/level-1/{leave_request_id}",
+        summary: "Approve or reject a leave request with notes",
+        security: [["bearerAuth" => []]],
+        tags: ["Approval"]
+    )]
+    #[OA\Parameter(name: "leave_request_id", in: "path", required: true, schema: new OA\Schema(type: "integer"))]
+    #[OA\RequestBody(
+        required: true,
+        content: new OA\JsonContent(
+            required: ["status"],
+            properties: [
+                new OA\Property(property: "status", type: "string", enum: ["approved", "rejected"]),
+                new OA\Property(property: "notes", type: "string", nullable: true)
+            ]
+        )
+    )]
+    #[OA\Response(
+        response: 200,
+        description: "Level 1 leave request processed successfully",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "success", type: "boolean"),
+                new OA\Property(property: "message", type: "string"),
+                new OA\Property(property: "data", type: "object", properties: [
+                    new OA\Property(property: "request", ref: "#/components/schemas/LeaveRequest")
+                ])
+            ]
+        )
+    )]
+    #[OA\Response(response: 400, description: "Validation error")]
     public function approveLevel1(Request $request, $leaveRequestId)
     {
         $employee = auth('api')->user();
@@ -58,10 +99,37 @@ class ApprovalController extends Controller
         return $this->handleApproval($request, $leaveRequestId, $employee->id, 1);
     }
 
-    /**
-     * POST /api/approvals/level-2/{leave_request_id}
-     * Approve or reject a leave request with notes at Manager level 2.
-     */
+    #[OA\Post(
+        path: "/api/approvals/level-2/{leave_request_id}",
+        summary: "Approve or reject a leave request with notes at Manager level 2",
+        security: [["bearerAuth" => []]],
+        tags: ["Approval"]
+    )]
+    #[OA\Parameter(name: "leave_request_id", in: "path", required: true, schema: new OA\Schema(type: "integer"))]
+    #[OA\RequestBody(
+        required: true,
+        content: new OA\JsonContent(
+            required: ["status"],
+            properties: [
+                new OA\Property(property: "status", type: "string", enum: ["approved", "rejected"]),
+                new OA\Property(property: "notes", type: "string", nullable: true)
+            ]
+        )
+    )]
+    #[OA\Response(
+        response: 200,
+        description: "Level 2 leave request processed successfully",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "success", type: "boolean"),
+                new OA\Property(property: "message", type: "string"),
+                new OA\Property(property: "data", type: "object", properties: [
+                    new OA\Property(property: "request", ref: "#/components/schemas/LeaveRequest")
+                ])
+            ]
+        )
+    )]
+    #[OA\Response(response: 400, description: "Validation error")]
     public function approveLevel2(Request $request, $leaveRequestId)
     {
         $employee = auth('api')->user();

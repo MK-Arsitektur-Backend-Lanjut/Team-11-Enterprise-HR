@@ -5,26 +5,51 @@ namespace App\Http\Controllers;
 use App\Services\AuthService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use OpenApi\Attributes as OA;
 
+#[OA\Tag(name: "Authentication", description: "API Endpoints for Authentication")]
 class AuthController extends Controller
 {
     protected $authService;
 
-    /**
-     * Create a new AuthController instance.
-     *
-     * @return void
-     */
     public function __construct(AuthService $authService)
     {
         $this->authService = $authService;
     }
 
-    /**
-     * Register a new employee.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
+    #[OA\Post(
+        path: "/api/register",
+        summary: "Register a new employee",
+        tags: ["Authentication"]
+    )]
+    #[OA\RequestBody(
+        required: true,
+        content: new OA\JsonContent(
+            required: ["name", "email", "password", "password_confirmation", "position", "department"],
+            properties: [
+                new OA\Property(property: "name", type: "string", example: "Jane Doe"),
+                new OA\Property(property: "email", type: "string", format: "email", example: "jane@enterprise.com"),
+                new OA\Property(property: "password", type: "string", format: "password", example: "secret"),
+                new OA\Property(property: "password_confirmation", type: "string", format: "password", example: "secret"),
+                new OA\Property(property: "position", type: "string", example: "HR Manager"),
+                new OA\Property(property: "department", type: "string", example: "HR"),
+                new OA\Property(property: "leave_balance", type: "integer", example: 12),
+                new OA\Property(property: "manager_id", type: "integer", nullable: true, example: null)
+            ]
+        )
+    )]
+    #[OA\Response(
+        response: 201,
+        description: "Employee registered successfully",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "message", type: "string"),
+                new OA\Property(property: "employee", ref: "#/components/schemas/Employee"),
+                new OA\Property(property: "token", type: "string")
+            ]
+        )
+    )]
+    #[OA\Response(response: 400, description: "Validation failed")]
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -42,10 +67,7 @@ class AuthController extends Controller
         }
 
         try {
-            // Mendelegasikan logika bisnis ke AuthService
             $employee = $this->authService->registerEmployee($request->all());
-            
-            // Login langsung setelah register
             $token = auth('api')->login($employee);
 
             return response()->json([
@@ -59,11 +81,33 @@ class AuthController extends Controller
         }
     }
 
-    /**
-     * Get a JWT via given credentials.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
+    #[OA\Post(
+        path: "/api/login",
+        summary: "Login to the application",
+        tags: ["Authentication"]
+    )]
+    #[OA\RequestBody(
+        required: true,
+        content: new OA\JsonContent(
+            required: ["email", "password"],
+            properties: [
+                new OA\Property(property: "email", type: "string", format: "email", example: "jane@enterprise.com"),
+                new OA\Property(property: "password", type: "string", format: "password", example: "secret")
+            ]
+        )
+    )]
+    #[OA\Response(
+        response: 200,
+        description: "Successful login",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "access_token", type: "string"),
+                new OA\Property(property: "token_type", type: "string", example: "bearer"),
+                new OA\Property(property: "expires_in", type: "integer")
+            ]
+        )
+    )]
+    #[OA\Response(response: 401, description: "Unauthorized")]
     public function login(Request $request)
     {
         $credentials = $request->only('email', 'password');
@@ -75,45 +119,68 @@ class AuthController extends Controller
         return $this->respondWithToken($token);
     }
 
-    /**
-     * Get the authenticated User.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
+    #[OA\Get(
+        path: "/api/me",
+        summary: "Get current authenticated user info",
+        security: [["bearerAuth" => []]],
+        tags: ["Authentication"]
+    )]
+    #[OA\Response(
+        response: 200,
+        description: "Successful operation",
+        content: new OA\JsonContent(ref: "#/components/schemas/Employee")
+    )]
+    #[OA\Response(response: 401, description: "Unauthenticated")]
     public function me()
     {
         return response()->json(auth('api')->user()->load('manager', 'subordinates'));
     }
 
-    /**
-     * Log the user out (Invalidate the token).
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
+    #[OA\Post(
+        path: "/api/logout",
+        summary: "Logout the user",
+        security: [["bearerAuth" => []]],
+        tags: ["Authentication"]
+    )]
+    #[OA\Response(
+        response: 200,
+        description: "Successfully logged out",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "message", type: "string")
+            ]
+        )
+    )]
+    #[OA\Response(response: 401, description: "Unauthenticated")]
     public function logout()
     {
         auth('api')->logout();
-
         return response()->json(['message' => 'Successfully logged out']);
     }
 
-    /**
-     * Refresh a token.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
+    #[OA\Post(
+        path: "/api/refresh",
+        summary: "Refresh JWT token",
+        security: [["bearerAuth" => []]],
+        tags: ["Authentication"]
+    )]
+    #[OA\Response(
+        response: 200,
+        description: "Token refreshed successfully",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "access_token", type: "string"),
+                new OA\Property(property: "token_type", type: "string", example: "bearer"),
+                new OA\Property(property: "expires_in", type: "integer")
+            ]
+        )
+    )]
+    #[OA\Response(response: 401, description: "Unauthenticated")]
     public function refresh()
     {
         return $this->respondWithToken(auth('api')->refresh());
     }
 
-    /**
-     * Get the token array structure.
-     *
-     * @param  string $token
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
     protected function respondWithToken($token)
     {
         return response()->json([

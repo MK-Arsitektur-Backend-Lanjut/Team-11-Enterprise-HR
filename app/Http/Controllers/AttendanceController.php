@@ -6,7 +6,9 @@ use App\Services\AttendanceService;
 use App\Services\ExportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use OpenApi\Attributes as OA;
 
+#[OA\Tag(name: "Attendance", description: "API Endpoints for Attendance and Reporting")]
 class AttendanceController extends Controller
 {
     protected AttendanceService $attendanceService;
@@ -18,13 +20,24 @@ class AttendanceController extends Controller
         $this->exportService = $exportService;
     }
 
-    /**
-     * Clock-in for the authenticated employee.
-     *
-     * POST /api/v1/attendance/clock-in
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
+    #[OA\Post(
+        path: "/api/v1/attendance/clock-in",
+        summary: "Clock-in for the authenticated employee",
+        security: [["bearerAuth" => []]],
+        tags: ["Attendance"]
+    )]
+    #[OA\Response(
+        response: 200,
+        description: "Successfully clocked in",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "success", type: "boolean"),
+                new OA\Property(property: "message", type: "string"),
+                new OA\Property(property: "data", ref: "#/components/schemas/Attendance")
+            ]
+        )
+    )]
+    #[OA\Response(response: 400, description: "Already clocked in or bad request")]
     public function clockIn()
     {
         $employeeId = auth('api')->id();
@@ -33,13 +46,24 @@ class AttendanceController extends Controller
         return response()->json($result, $result['success'] ? 200 : 400);
     }
 
-    /**
-     * Clock-out for the authenticated employee.
-     *
-     * POST /api/v1/attendance/clock-out
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
+    #[OA\Post(
+        path: "/api/v1/attendance/clock-out",
+        summary: "Clock-out for the authenticated employee",
+        security: [["bearerAuth" => []]],
+        tags: ["Attendance"]
+    )]
+    #[OA\Response(
+        response: 200,
+        description: "Successfully clocked out",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "success", type: "boolean"),
+                new OA\Property(property: "message", type: "string"),
+                new OA\Property(property: "data", ref: "#/components/schemas/Attendance")
+            ]
+        )
+    )]
+    #[OA\Response(response: 400, description: "Not clocked in or already clocked out")]
     public function clockOut()
     {
         $employeeId = auth('api')->id();
@@ -48,14 +72,26 @@ class AttendanceController extends Controller
         return response()->json($result, $result['success'] ? 200 : 400);
     }
 
-    /**
-     * Get the authenticated employee's own attendance records.
-     *
-     * GET /api/v1/attendance/me
-     * Query params: start_date, end_date, month, year
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
+    #[OA\Get(
+        path: "/api/v1/attendance/me",
+        summary: "Get the authenticated employee's own attendance records",
+        security: [["bearerAuth" => []]],
+        tags: ["Attendance"]
+    )]
+    #[OA\Parameter(name: "start_date", in: "query", required: false, schema: new OA\Schema(type: "string", format: "date"))]
+    #[OA\Parameter(name: "end_date", in: "query", required: false, schema: new OA\Schema(type: "string", format: "date"))]
+    #[OA\Parameter(name: "month", in: "query", required: false, schema: new OA\Schema(type: "integer"))]
+    #[OA\Parameter(name: "year", in: "query", required: false, schema: new OA\Schema(type: "integer"))]
+    #[OA\Response(
+        response: 200,
+        description: "Successful operation",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "success", type: "boolean"),
+                new OA\Property(property: "data", type: "object")
+            ]
+        )
+    )]
     public function myAttendance(Request $request)
     {
         $employeeId = auth('api')->id();
@@ -71,7 +107,6 @@ class AttendanceController extends Controller
             return response()->json(['errors' => $validator->errors()], 400);
         }
 
-        // If month/year provided, use monthly report
         if ($request->filled(['month', 'year'])) {
             $report = $this->attendanceService->getMonthlyReport(
                 $employeeId,
@@ -79,7 +114,6 @@ class AttendanceController extends Controller
                 $request->year
             );
         } else {
-            // Default to current month if no date range specified
             $startDate = $request->start_date ?? now()->startOfMonth()->toDateString();
             $endDate = $request->end_date ?? now()->toDateString();
 
@@ -92,15 +126,27 @@ class AttendanceController extends Controller
         ]);
     }
 
-    /**
-     * Get attendance report.
-     * HR can view all employees, regular employees can only view their own.
-     *
-     * GET /api/v1/attendance/report
-     * Query params: employee_id, start_date, end_date, month, year
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
+    #[OA\Get(
+        path: "/api/v1/attendance/report",
+        summary: "Get attendance report (HR can view all, regular can only view their own)",
+        security: [["bearerAuth" => []]],
+        tags: ["Attendance"]
+    )]
+    #[OA\Parameter(name: "employee_id", in: "query", required: false, schema: new OA\Schema(type: "integer"))]
+    #[OA\Parameter(name: "start_date", in: "query", required: false, schema: new OA\Schema(type: "string", format: "date"))]
+    #[OA\Parameter(name: "end_date", in: "query", required: false, schema: new OA\Schema(type: "string", format: "date"))]
+    #[OA\Parameter(name: "month", in: "query", required: false, schema: new OA\Schema(type: "integer"))]
+    #[OA\Parameter(name: "year", in: "query", required: false, schema: new OA\Schema(type: "integer"))]
+    #[OA\Response(
+        response: 200,
+        description: "Successful operation",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "success", type: "boolean"),
+                new OA\Property(property: "data", type: "object")
+            ]
+        )
+    )]
     public function getReport(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -119,7 +165,6 @@ class AttendanceController extends Controller
         $isHR = strtolower($currentEmployee->department) === 'hr'
             || strtolower($currentEmployee->position) === 'hr';
 
-        // Determine date range
         if ($request->filled(['month', 'year'])) {
             $startDate = \Carbon\Carbon::create($request->year, $request->month, 1)->startOfMonth()->toDateString();
             $endDate = \Carbon\Carbon::create($request->year, $request->month, 1)->endOfMonth()->toDateString();
@@ -128,12 +173,9 @@ class AttendanceController extends Controller
             $endDate = $request->end_date ?? now()->toDateString();
         }
 
-        // HR can view all or specific employee; non-HR can only view their own
         if ($isHR && !$request->filled('employee_id')) {
-            // HR viewing all employees report
             $report = $this->attendanceService->getAllEmployeesReport($startDate, $endDate);
         } else {
-            // Specific employee or own report
             $employeeId = $isHR
                 ? ($request->employee_id ?? $currentEmployee->id)
                 : $currentEmployee->id;
@@ -147,14 +189,25 @@ class AttendanceController extends Controller
         ]);
     }
 
-    /**
-     * Export attendance report as CSV.
-     *
-     * GET /api/v1/attendance/report/export
-     * Query params: employee_id, start_date, end_date, month, year
-     *
-     * @return \Symfony\Component\HttpFoundation\StreamedResponse
-     */
+    #[OA\Get(
+        path: "/api/v1/attendance/report/export",
+        summary: "Export attendance report as CSV",
+        security: [["bearerAuth" => []]],
+        tags: ["Attendance"]
+    )]
+    #[OA\Parameter(name: "employee_id", in: "query", required: false, schema: new OA\Schema(type: "integer"))]
+    #[OA\Parameter(name: "start_date", in: "query", required: false, schema: new OA\Schema(type: "string", format: "date"))]
+    #[OA\Parameter(name: "end_date", in: "query", required: false, schema: new OA\Schema(type: "string", format: "date"))]
+    #[OA\Parameter(name: "month", in: "query", required: false, schema: new OA\Schema(type: "integer"))]
+    #[OA\Parameter(name: "year", in: "query", required: false, schema: new OA\Schema(type: "integer"))]
+    #[OA\Response(
+        response: 200,
+        description: "CSV File Download",
+        content: new OA\MediaType(
+            mediaType: "text/csv",
+            schema: new OA\Schema(type: "string", format: "binary")
+        )
+    )]
     public function exportReport(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -173,7 +226,6 @@ class AttendanceController extends Controller
         $isHR = strtolower($currentEmployee->department) === 'hr'
             || strtolower($currentEmployee->position) === 'hr';
 
-        // Determine date range
         if ($request->filled(['month', 'year'])) {
             $startDate = \Carbon\Carbon::create($request->year, $request->month, 1)->startOfMonth()->toDateString();
             $endDate = \Carbon\Carbon::create($request->year, $request->month, 1)->endOfMonth()->toDateString();
@@ -182,7 +234,6 @@ class AttendanceController extends Controller
             $endDate = $request->end_date ?? now()->toDateString();
         }
 
-        // HR can export all or specific employee; non-HR can only export own
         if ($isHR && !$request->filled('employee_id')) {
             $report = $this->attendanceService->getAllEmployeesReport($startDate, $endDate);
         } else {

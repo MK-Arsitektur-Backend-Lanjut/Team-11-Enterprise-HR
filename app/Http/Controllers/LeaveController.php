@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Services\ApprovalWorkflowService;
 use App\Repositories\LeaveRequestRepository;
+use OpenApi\Attributes as OA;
 
+#[OA\Tag(name: "Leave Request", description: "API Endpoints for Leave Requests")]
 class LeaveController extends Controller
 {
     private $workflowService;
@@ -17,10 +19,36 @@ class LeaveController extends Controller
         $this->repository = $repository;
     }
 
-    /**
-     * POST /api/leaves
-     * Submit a leave request.
-     */
+    #[OA\Post(
+        path: "/api/leaves",
+        summary: "Submit a leave request",
+        security: [["bearerAuth" => []]],
+        tags: ["Leave Request"]
+    )]
+    #[OA\RequestBody(
+        required: true,
+        content: new OA\JsonContent(
+            required: ["start_date", "end_date", "reason", "type"],
+            properties: [
+                new OA\Property(property: "start_date", type: "string", format: "date", example: "2024-10-01"),
+                new OA\Property(property: "end_date", type: "string", format: "date", example: "2024-10-03"),
+                new OA\Property(property: "reason", type: "string", example: "Family vacation"),
+                new OA\Property(property: "type", type: "string", example: "annual")
+            ]
+        )
+    )]
+    #[OA\Response(
+        response: 201,
+        description: "Leave request submitted successfully",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "success", type: "boolean"),
+                new OA\Property(property: "message", type: "string"),
+                new OA\Property(property: "data", ref: "#/components/schemas/LeaveRequest")
+            ]
+        )
+    )]
+    #[OA\Response(response: 400, description: "Validation error or insufficient leave balance")]
     public function store(Request $request)
     {
         $employee = auth('api')->user();
@@ -64,10 +92,23 @@ class LeaveController extends Controller
         }
     }
 
-    /**
-     * GET /api/leaves/my-requests
-     * View leave history and status by authenticated employee ID.
-     */
+    #[OA\Get(
+        path: "/api/leaves/my-requests",
+        summary: "View leave history and status by authenticated employee",
+        security: [["bearerAuth" => []]],
+        tags: ["Leave Request"]
+    )]
+    #[OA\Response(
+        response: 200,
+        description: "Successful operation",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "success", type: "boolean"),
+                new OA\Property(property: "leaves_balances", type: "integer"),
+                new OA\Property(property: "data", type: "array", items: new OA\Items(ref: "#/components/schemas/LeaveRequest"))
+            ]
+        )
+    )]
     public function myRequests(Request $request)
     {
         $employee = auth('api')->user();
@@ -90,10 +131,22 @@ class LeaveController extends Controller
         ], 200);
     }
 
-    /**
-     * GET /api/leaves/subordinates
-     * View all leaves from subordinates only.
-     */
+    #[OA\Get(
+        path: "/api/leaves/subordinates",
+        summary: "View all leaves from subordinates only",
+        security: [["bearerAuth" => []]],
+        tags: ["Leave Request"]
+    )]
+    #[OA\Response(
+        response: 200,
+        description: "Successful operation",
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: "success", type: "boolean"),
+                new OA\Property(property: "data", type: "array", items: new OA\Items(ref: "#/components/schemas/LeaveRequest"))
+            ]
+        )
+    )]
     public function subordinateRequests(Request $request)
     {
         $employee = auth('api')->user();

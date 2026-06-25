@@ -15,7 +15,17 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'hierarchy.access' => \App\Http\Middleware\CheckHierarchyAccess::class,
         ]);
+        
+        $middleware->redirectGuestsTo(fn (\Illuminate\Http\Request $request) => 
+            $request->is('api/*') ? null : route('login')
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->shouldRenderJsonWhen(function (\Illuminate\Http\Request $request, \Throwable $e) {
+            if ($request->is('api/*')) {
+                return true;
+            }
+
+            return $request->expectsJson();
+        });
     })->create();
